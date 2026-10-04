@@ -2,9 +2,12 @@ import { useMemo } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { PontoHistorico } from '../../../shared/tipos.ts';
 import { diaMes, horaMinuto, pct } from '../formato.ts';
-import { corSerie, neutros, type Tema } from '../paleta.ts';
+import { corFixa, corSerie, neutros, type Tema } from '../paleta.ts';
 
 export type Granularidade = 'hora' | 'todos';
+
+// Cor do "pontinho" (legenda/tabela/dica): a fixa (Lula/Flávio) vence a série automática
+const swatchStyle = (nome: string) => (corFixa(nome) ? { background: corFixa(nome) } : undefined);
 
 interface Serie { numero: string; nome: string; slot: number | undefined }
 
@@ -52,7 +55,7 @@ function Dica({ active, payload, series, ativo }: {
       <ul>
         {visiveis.map((s) => (
           <li key={s.numero} className={s.numero === ativo ? 'dica-ativa' : ''}>
-            <span className="ponto" data-slot={s.slot ?? 'contexto'} />
+            <span className="ponto" data-slot={s.slot ?? 'contexto'} style={swatchStyle(s.nome)} />
             <span>{s.nome}</span>
             <strong>{pct(linha[s.numero] as number)}</strong>
           </li>
@@ -119,16 +122,17 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
                 {ordemDesenho.map((s) => {
                   const destaque = ativo === s.numero;
                   const apagada = ativo !== null && !destaque;
+                  const cor = corFixa(s.nome) ?? corSerie(tema, s.slot);
                   return (
                     <Line
                       key={s.numero}
                       dataKey={s.numero}
                       name={s.nome}
                       type="linear"
-                      stroke={corSerie(tema, s.slot)}
+                      stroke={cor}
                       strokeWidth={destaque ? 3.5 : s.slot === undefined ? 1.25 : 2}
                       strokeOpacity={apagada ? 0.18 : 1}
-                      dot={por === 'hora' && s.slot !== undefined ? { r: 3, strokeWidth: 0, fill: corSerie(tema, s.slot), fillOpacity: apagada ? 0.18 : 1 } : false}
+                      dot={por === 'hora' && s.slot !== undefined ? { r: 3, strokeWidth: 0, fill: cor, fillOpacity: apagada ? 0.18 : 1 } : false}
                       activeDot={apagada ? false : { r: 5, strokeWidth: 2, stroke: 'var(--superficie)' }}
                       connectNulls
                       isAnimationActive={false}
@@ -152,7 +156,7 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
                   onMouseLeave={() => onDestacar(null)}
                   onClick={() => onFixar(s.numero)}
                 >
-                  <span className="ponto" data-slot={s.slot} />
+                  <span className="ponto" data-slot={s.slot} style={swatchStyle(s.nome)} />
                   {s.nome}
                   {ultima && typeof ultima[s.numero] === 'number' && <span className="legenda-valor">{pct(ultima[s.numero] as number)}</span>}
                 </button>
@@ -175,7 +179,7 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
                   <tr>
                     <th scope="col">Hora</th>
                     <th scope="col">Seções</th>
-                    {coloridas.map((s) => <th key={s.numero} scope="col"><span className="ponto" data-slot={s.slot} />{s.nome}</th>)}
+                    {coloridas.map((s) => <th key={s.numero} scope="col"><span className="ponto" data-slot={s.slot} style={swatchStyle(s.nome)} />{s.nome}</th>)}
                   </tr>
                 </thead>
                 <tbody>
