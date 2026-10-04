@@ -219,6 +219,7 @@ app.get('/api/config', (_req, res) => {
     intervaloMs: config.cacheMs,
     chavePush: chavePublica,
     turno: config.turno,
+    inicioApuracao: config.inicioApuracao,
     // Só oferece cargos cuja eleição está configurada no .env
     cargos: Object.values(CARGOS).filter((c) => config.eleicao[c.eleicao]),
   };

@@ -10,6 +10,7 @@ services:
       TSE_BASE: ${TSE_BASE:-https://resultados.tse.jus.br/oficial}
       CICLO: ${CICLO:-ele2026}
       TURNO: ${TURNO:-1º turno}
+      INICIO_APURACAO: ${INICIO_APURACAO:-2026-10-04T17:00:00-03:00}
       # Códigos do 1º turno de 2026; no 2º turno, troque (npm run eleicoes lista os códigos)
       ELEICAO_FEDERAL: ${ELEICAO_FEDERAL:-6257}
       ELEICAO_ESTADUAL: ${ELEICAO_ESTADUAL:-6259}

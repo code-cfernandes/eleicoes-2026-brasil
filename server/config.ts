@@ -45,6 +45,8 @@ export const config = {
   base: env('TSE_BASE') ?? 'https://resultados.tse.jus.br/oficial',
   ciclo: env('CICLO') ?? 'ele2026',
   turno: env('TURNO') ?? '1º turno',
+  // Quando a apuração começa (contagem regressiva na página inicial). No 2º turno: 2026-10-25T17:00:00-03:00
+  inicioApuracao: Date.parse(env('INICIO_APURACAO') ?? '2026-10-04T17:00:00-03:00') || null,
   eleicao: {
     federal: env('ELEICAO_FEDERAL'),   // presidente
     estadual: env('ELEICAO_ESTADUAL'), // governador, senador, deputados

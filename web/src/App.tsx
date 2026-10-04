@@ -5,9 +5,11 @@ import { Avisos } from './componentes/Avisos.tsx';
 import { Cartao } from './componentes/Cartao.tsx';
 import { Evolucao, type Granularidade } from './componentes/Evolucao.tsx';
 import { Bandeira } from './componentes/Bandeira.tsx';
+import { Inicio } from './componentes/Inicio.tsx';
 import { PorEstado } from './componentes/PorEstado.tsx';
+import { ResumoLideranca } from './componentes/ResumoLideranca.tsx';
 import { VisaoEstado } from './componentes/VisaoEstado.tsx';
-import { dataHora, horaDoAparelho, pct, pontos, semAcento, votos } from './formato.ts';
+import { dataHora, horaDoAparelho, pct, semAcento, votos } from './formato.ts';
 import { corSerie, MAX_SERIES, useTema } from './paleta.ts';
 import { NOMES_UF } from '../../shared/ufs.ts';
 
@@ -25,15 +27,18 @@ function IconeGitHub() {
 }
 
 // Cargo e UF ficam na URL: dá para compartilhar o link de uma disputa
-// "cargo" 0 = aba "Por estado"; -1 = visão especializada de um estado (nenhum dos dois é uma
-// disputa: o efeito de atualização por cargo/SSE fica parado nesses dois modos)
+// "cargo" 0 = aba "Por estado"; -1 = visão especializada de um estado; -2 = página Início
+// (nenhum dos três é uma disputa: o efeito de atualização por cargo/SSE fica parado neles)
 const POR_ESTADO = 0;
 const VISAO_ESTADO = -1;
+const INICIO = -2;
 
 function lerUrl() {
   const q = new URLSearchParams(location.search);
   const uf = q.get('uf')?.toLowerCase() || 'br';
   const aba = q.get('aba');
+  // URL "/" sem parâmetros (e sem ?cargo nem ?aba): Início
+  if (!location.search) return { cargo: INICIO, uf: 'br' };
   if (aba === 'estados') return { cargo: POR_ESTADO, uf };
   if (aba === 'estado') return { cargo: VISAO_ESTADO, uf };
   return { cargo: Number(q.get('cargo')) || 1, uf };
@@ -80,7 +85,10 @@ export function App() {
   }, [cargoAtual, cargo, uf, ufEstadual]);
 
   useEffect(() => {
-    const url = cargo === POR_ESTADO ? '?aba=estados' : cargo === VISAO_ESTADO ? `?aba=estado&uf=${uf}` : `?cargo=${cargo}&uf=${uf}`;
+    const url = cargo === INICIO ? '/'
+      : cargo === POR_ESTADO ? '?aba=estados'
+      : cargo === VISAO_ESTADO ? `?aba=estado&uf=${uf}`
+      : `?cargo=${cargo}&uf=${uf}`;
     history.replaceState(null, '', url);
     if (uf !== 'br') setUfEstadual(uf);
     setBusca(''); setLimite(POR_PAGINA); setFixado(null); setDestacado(null);
@@ -205,26 +213,18 @@ export function App() {
 
   // Resumo da liderança: só faz sentido com apuração em andamento e alguém com voto
   const apuracaoComecou = (resultado?.secoesTotalizadas ?? 0) > 0 && candidatos.some((c) => c.votos > 0);
-  const comVotos = candidatos.filter((c) => c.votos > 0);
   const proporcional = !!cargoAtual?.proporcional;
-  const [lider, vice] = comVotos;
-  const indefinido = resultado ? !candidatos.some((c) => c.eleito || /2º turno/i.test(c.situacao || '')) : true;
-  // Senador etc.: vaga é por posição no placar (não proporcional); deputados nunca "entram" só pela posição.
-  // O que interessa é a distância entre a última vaga e o primeiro de fora.
-  const dentro = !proporcional && vagas > 1 ? comVotos.slice(0, vagas) : [];
-  const ultimaVaga = dentro.at(-1);
-  const primeiroFora = dentro.length === vagas ? comVotos[vagas] : undefined;
 
   return (
     <main>
       <header className="topo">
         <div className="topo-titulo">
           <h1>
-            {/* Volta à página inicial (Presidente, Brasil). Link real: Ctrl/⌘+clique abre em nova aba */}
+            {/* Volta à página Início. Link real: Ctrl/⌘+clique abre em nova aba */}
             <a href="/" className="topo-inicio" onClick={(e) => {
               if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
               e.preventDefault();
-              setDisputa({ cargo: 1, uf: 'br' });
+              setDisputa({ cargo: INICIO, uf: 'br' });
               scrollTo({ top: 0 });
             }}>
               Apuração 2026 <span>{cfg?.turno}</span>
@@ -235,7 +235,7 @@ export function App() {
             Código aberto no GitHub, deixe sua estrela
           </a>
         </div>
-        {cargo !== POR_ESTADO && cargo !== VISAO_ESTADO && <p className={`status${erro ? ' status-erro' : ''}`} role="status">
+        {cargo !== POR_ESTADO && cargo !== VISAO_ESTADO && cargo !== INICIO && <p className={`status${erro ? ' status-erro' : ''}`} role="status">
           {erro
             ? `Sem conexão com os resultados (${erro}). Nova tentativa em ${(cfg?.intervaloMs ?? 30000) / 1000}s.`
             : resultado?.instante
@@ -252,6 +252,11 @@ export function App() {
 
       <nav className="filtros" aria-label="Disputa">
         <div className="cargos" role="tablist" aria-label="Cargo">
+          <button type="button" role="tab" aria-selected={cargo === INICIO}
+            ref={cargo === INICIO ? abaAtivaRef : undefined}
+            onClick={() => { setDisputa({ cargo: INICIO, uf: 'br' }); scrollTo({ top: 0 }); }}>
+            Início
+          </button>
           {cfg?.cargos.map((c) => (
             <button key={c.codigo} type="button" role="tab" aria-selected={c.codigo === cargo}
               ref={c.codigo === cargo ? abaAtivaRef : undefined}
@@ -265,7 +270,7 @@ export function App() {
             Por estado
           </button>
         </div>
-        {cargo !== POR_ESTADO && cargo !== VISAO_ESTADO && (
+        {cargo !== POR_ESTADO && cargo !== VISAO_ESTADO && cargo !== INICIO && (
           <label className="seletor-uf">
             <span className="visualmente-oculto">Local</span>
             <select value={uf} onChange={(e) => setDisputa({ cargo, uf: e.target.value })}>
@@ -275,7 +280,12 @@ export function App() {
         )}
       </nav>
 
-      {cargo === POR_ESTADO ? (
+      {cargo === INICIO ? (
+        <Inicio cfg={cfg}
+          onAbrirDisputa={(c, u) => { setDisputa({ cargo: c, uf: u }); scrollTo({ top: 0 }); }}
+          onAbrirEstado={(u) => { setDisputa({ cargo: VISAO_ESTADO, uf: u }); scrollTo({ top: 0 }); }}
+          onAbrirPorEstado={() => { setDisputa({ cargo: POR_ESTADO, uf: 'br' }); scrollTo({ top: 0 }); }} />
+      ) : cargo === POR_ESTADO ? (
         <PorEstado intervaloMs={cfg?.intervaloMs ?? 30_000}
           onAbrir={(u) => {
             // Exterior só tem Presidente: vai direto para a disputa. Estados têm visão própria.
@@ -315,54 +325,8 @@ export function App() {
           </p>
         )}
 
-        {resultado && apuracaoComecou && lider && (
-          <div className="resumo" aria-live="polite">
-            <p className="resumo-estado">
-              {candidatos.find((c) => c.eleito)
-                ? <span className="resumo-tag resumo-tag-eleito">Resultado definido</span>
-                : candidatos.some((c) => /2º turno/i.test(c.situacao || ''))
-                  ? <span className="resumo-tag resumo-tag-segundo-turno">Vai para o 2º turno</span>
-                  : <span className="resumo-tag resumo-tag-andamento">Em apuração</span>}
-            </p>
-            {proporcional ? (
-              // Eleição proporcional: não existe "disputa" entre o 1º e o 2º da lista
-              <p className="resumo-lider">
-                <strong>{lider.nome}</strong> ({lider.partido}) é quem tem mais votos até agora, com <strong>{pct(lider.percentual)}</strong>.
-              </p>
-            ) : vagas > 1 ? (
-              <>
-                <p className="resumo-lider">
-                  Nas {vagas} vagas agora:{' '}
-                  {dentro.map((c, i) => (
-                    <span key={c.numero}>
-                      {i > 0 && (i === dentro.length - 1 ? ' e ' : ', ')}
-                      <strong>{c.nome}</strong> ({pct(c.percentual)})
-                    </span>
-                  ))}.
-                </p>
-                {ultimaVaga && primeiroFora && (
-                  <p className="resumo-corte">
-                    {primeiroFora.nome}, em {vagas + 1}º, está a {pontos(ultimaVaga.percentual - primeiroFora.percentual)} da
-                    última vaga ({votos(ultimaVaga.votos - primeiroFora.votos)}).
-                  </p>
-                )}
-              </>
-            ) : (
-              <p className="resumo-lider">
-                {vice && lider.votos === vice.votos ? (
-                  <><strong>{lider.nome}</strong> e <strong>{vice.nome}</strong> estão empatados, com {pct(lider.percentual)}.</>
-                ) : (
-                  <>
-                    <strong>{lider.nome}</strong> ({lider.partido}) lidera com <strong>{pct(lider.percentual)}</strong>
-                    {vice && <>, {pontos(lider.percentual - vice.percentual)} à frente de <strong>{vice.nome}</strong> ({vice.partido}), {votos(lider.votos - vice.votos)} de diferença</>}.
-                  </>
-                )}
-                {indefinido && (lider.percentual > 50
-                  ? ' Com mais da metade dos votos válidos, vence no 1º turno se mantiver a vantagem.'
-                  : ` Para vencer no 1º turno é preciso mais da metade dos votos válidos: faltam ${pontos(50 - lider.percentual)}.`)}
-              </p>
-            )}
-          </div>
+        {resultado && apuracaoComecou && (
+          <ResumoLideranca candidatos={candidatos} vagas={vagas} proporcional={proporcional} />
         )}
 
         {cfg && cargoAtual?.ufs.includes(uf) && (

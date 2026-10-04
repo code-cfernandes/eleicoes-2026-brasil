@@ -96,6 +96,8 @@ export interface ConfigPublica {
   intervaloMs: number;
   /** Chave pública VAPID para inscrever o aparelho em notificações */
   chavePush: string;
+  /** Início da apuração (epoch ms), para a contagem regressiva; null se não configurado */
+  inicioApuracao: number | null;
   turno: string;
   cargos: Cargo[];
 }
