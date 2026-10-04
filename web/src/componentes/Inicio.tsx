@@ -264,11 +264,12 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
 
         <section className="inicio-bloco inicio-mapa-mini" aria-labelledby="inicio-mapa-titulo">
           <div className="inicio-bloco-cabecalho">
-            <h2 id="inicio-mapa-titulo">Totalização por estado</h2>
+            <h2 id="inicio-mapa-titulo">Liderança por estado</h2>
             <button type="button" className="inicio-lista-completa" onClick={onAbrirMapa}>Ver mapa</button>
           </div>
           {panorama ? (
-            <MapaBrasil estados={panorama.estados} rotuloLider="Presidente" modo="andamento" onSelecionar={onAbrirEstado} />
+            <MapaBrasil estados={panorama.estados} rotuloLider="Presidente" modo="lider"
+              corDoCandidato={(n) => corSerie(tema, slots.get(n))} onSelecionar={onAbrirEstado} />
           ) : (
             <p className="resumo-estados">Carregando…</p>
           )}

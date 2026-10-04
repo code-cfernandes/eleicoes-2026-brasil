@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Panorama } from '../../../shared/tipos.ts';
 import { buscarPanorama } from '../api.ts';
 import { pct } from '../formato.ts';
+import { MAX_SERIES } from '../paleta.ts';
 import { MapaBrasil } from './MapaBrasil.tsx';
 
 // Página "Mapa": totalização por estado, com alternância de cargo (Presidente/Governador/
@@ -51,11 +52,24 @@ export function Mapa({ intervaloMs, onAbrirEstado, onVerComoLista, cargoInicial,
   const rotuloCargo = CARGOS_MAPA.find((c) => c.cargo === cargo)?.rotulo ?? 'Presidente';
   const pstBrasil = dados?.brasil.pst ?? null;
 
+  // Cor de quem lidera em cada estado: mesma regra do resto do app (número ordenado -> série),
+  // então a cor do candidato no mapa é a mesma dos cards e do gráfico.
+  const slots = useMemo(() => {
+    const numeros = [...new Set((dados?.estados ?? []).map((e) => e.lider?.numero).filter((n): n is string => !!n))];
+    return new Map(numeros.sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }))
+      .slice(0, MAX_SERIES)
+      .map((n, i) => [n, i] as const));
+  }, [dados]);
+  const corDoCandidato = useCallback((n: string) => {
+    const s = slots.get(n);
+    return s === undefined ? undefined : `var(--s${s})`;
+  }, [slots]);
+
   return (
     <section className={fixarCargo ? undefined : 'mapa-pagina'} aria-labelledby={fixarCargo ? undefined : 'mapa-titulo'}>
       {!fixarCargo && (
         <div className="inicio-bloco-cabecalho">
-          <h2 id="mapa-titulo">Totalização por estado</h2>
+          <h2 id="mapa-titulo">Liderança por estado</h2>
           {alternanciaDisponivel && (
             <div className="alternar" role="group" aria-label="Cargo mostrado no mapa">
               {CARGOS_MAPA.map((c) => (
@@ -70,7 +84,7 @@ export function Mapa({ intervaloMs, onAbrirEstado, onVerComoLista, cargoInicial,
       </p>
 
       {dados && (
-        <MapaBrasil estados={dados.estados} rotuloLider={rotuloCargo} modo="andamento"
+        <MapaBrasil estados={dados.estados} rotuloLider={rotuloCargo} modo="lider" corDoCandidato={corDoCandidato}
           onSelecionar={onAbrirEstado} verComoLista={onVerComoLista} />
       )}
     </section>
