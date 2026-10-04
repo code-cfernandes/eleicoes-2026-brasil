@@ -1,18 +1,22 @@
 import express, { type Request, type Response } from 'express';
 import compression from 'compression';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 import { config, CARGOS } from './config.ts';
 import { buscarResultado } from './tse.ts';
 import { registrar, lerHistorico, fechar } from './historico.ts';
 import { obterFoto } from './fotos.ts';
+import { assinar, conexoesAbertas, disputasAssistidas, encerrarTodas, notificar } from './eventos.ts';
 import type { ConfigPublica, Resultado } from '../shared/tipos.ts';
 
 const app = express();
 app.use(compression()); // JSON de deputados cai de ~250 kB para ~35 kB
 const cache = new Map<string, { expira: number; promessa: Promise<Resultado> }>();
+const versoes = new Map<string, number | null>(); // última geração do TSE vista por disputa
 
 // Cache curto + dedupe: N visitantes simultâneos geram 1 requisição ao TSE por janela.
-// Toda resposta nova do TSE vai para o histórico, venha do coletor ou de um visitante.
+// Toda resposta nova do TSE vai para o histórico, venha do coletor ou de um visitante,
+// e quem está com a disputa aberta recebe o aviso na hora (SSE).
 function obter(uf: string, cargo: number): Promise<Resultado> {
   const chave = `${uf}:${cargo}`;
   const hit = cache.get(chave);
@@ -20,6 +24,8 @@ function obter(uf: string, cargo: number): Promise<Resultado> {
 
   const promessa = buscarResultado(uf, cargo).then((d) => {
     try { registrar(uf, cargo, d); } catch (e) { console.error(`[histórico ${chave}]`, (e as Error).message); }
+    if (versoes.has(chave) && versoes.get(chave) !== d.instante) notificar(chave, { instante: d.instante, pst: d.secoesTotalizadas });
+    versoes.set(chave, d.instante);
     return d;
   }).catch((err: unknown) => {
     cache.delete(chave); // não guarda erro em cache
@@ -27,6 +33,18 @@ function obter(uf: string, cargo: number): Promise<Resultado> {
   });
   cache.set(chave, { expira: Date.now() + config.cacheMs, promessa });
   return promessa;
+}
+
+// JSON e gzip prontos por versão: quando milhares de aparelhos buscam logo após um aviso,
+// o servidor serializa/comprime uma vez em vez de uma vez por aparelho.
+const corpos = new WeakMap<Resultado, { json: Buffer; gzip: Buffer }>();
+function corpoPronto(d: Resultado) {
+  let c = corpos.get(d);
+  if (!c) {
+    const json = Buffer.from(JSON.stringify(d));
+    corpos.set(d, (c = { json, gzip: gzipSync(json) }));
+  }
+  return c;
 }
 
 // Validação compartilhada pelas rotas: a UF precisa ter resultado para aquele cargo
@@ -52,7 +70,11 @@ app.get('/api/resultado', async (req: Request, res: Response) => {
       res.status(304).end();
       return;
     }
-    res.json(d);
+    const c = corpoPronto(d);
+    res.vary('Accept-Encoding').type('json');
+    // Content-Encoding já definido: o middleware compression não recomprime
+    if (req.acceptsEncodings('gzip') === 'gzip') res.set('Content-Encoding', 'gzip').send(c.gzip);
+    else res.send(c.json);
   } catch (err) {
     res.status(502).json({ erro: (err as Error).message });
   }
@@ -102,8 +124,20 @@ app.get('/api/config', (_req, res) => {
   res.json(cfg);
 });
 
+// Conexão SSE de uma disputa: avisa quando o TSE publicar versão nova.
+// Lotado (MAX_CONEXOES) -> 503 e o navegador segue no polling.
+app.get('/api/eventos', (req: Request, res: Response) => {
+  const p = params(req.query.uf, req.query.cargo, res);
+  if (!p) return;
+  if (!assinar(`${p.uf}:${p.cargo}`, req, res)) {
+    res.status(503).json({ erro: 'Limite de conexões ao vivo atingido' });
+    return;
+  }
+  void obter(p.uf, p.cargo).catch(() => {}); // começa a acompanhar a disputa já
+});
+
 app.get('/api/saude', (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, conexoes: conexoesAbertas() });
 });
 
 // Arquivos do Vite têm hash no nome: cache de 1 ano. index.html sempre revalida.
@@ -118,7 +152,9 @@ let coletando = false;
 async function coletarTudo() {
   if (coletando) return; // rodada anterior ainda não terminou
   coletando = true;
-  const fila = [...config.monitorar];
+  // MONITORAR (sempre) + o que alguém está assistindo agora (só enquanto houver alguém)
+  const pares = new Map([...config.monitorar, ...disputasAssistidas()].map((p) => [p.join(':'), p] as const));
+  const fila = [...pares.values()];
   const trabalhador = async () => {
     for (let par = fila.shift(); par; par = fila.shift()) {
       const [uf, cargo] = par;
@@ -139,6 +175,7 @@ const servidor = app.listen(config.port, () => console.log(`http://localhost:${c
 for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(sinal, () => {
     clearInterval(coletor);
+    encerrarTodas(); // navegadores reconectam sozinhos na próxima instância
     servidor.close(() => { fechar(); process.exit(0); });
     servidor.closeAllConnections();
   });

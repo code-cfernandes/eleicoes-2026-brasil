@@ -16,6 +16,8 @@ const NOMES_UF: Record<string, string> = {
 };
 const POR_PAGINA = 24;
 const NO_GRAFICO = 30; // linhas no gráfico: as 8 coloridas + contexto em cinza
+const SEGURANCA_MS = 120_000; // com o ao vivo funcionando, só uma conferência a cada 2 min
+const ESPALHAR_MS = 2_000;    // padrão; o servidor manda um maior quando há muita gente assistindo
 
 // Cargo e UF ficam na URL: dá para compartilhar o link de uma disputa
 function lerUrl() {
@@ -32,6 +34,7 @@ export function App() {
   const [resultado, setResultado] = useState<Resultado>();
   const [historico, setHistorico] = useState<PontoHistorico[]>([]);
   const [erro, setErro] = useState<string>();
+  const [aoVivo, setAoVivo] = useState(false);
   const [busca, setBusca] = useState('');
   const [limite, setLimite] = useState(POR_PAGINA);
   const [destacado, setDestacado] = useState<string | null>(null);
@@ -55,19 +58,28 @@ export function App() {
     setResultado(undefined); setHistorico([]);
   }, [cargo, uf]);
 
-  // Atualização automática no ritmo do cache do backend; volta da aba = dado fresco.
-  // Sem dado novo do TSE, cada rodada custa um 304 sem corpo. Com dado novo,
-  // o histórico vem só a partir do último ponto que a tela já tem.
+  // Atualização: o servidor avisa por SSE quando o TSE publica versão nova; aí a tela
+  // busca pelas rotas HTTP (304 se nada mudou, histórico só a partir do último ponto).
+  // Sem SSE (rede bloqueia, servidor lotado), cai para polling no ritmo do backend.
   useEffect(() => {
     if (!cfg || !cargoAtual?.ufs.includes(uf)) return;
     const ctrl = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    const depois = (fn: () => void, ms: number) => {
+      const t = setTimeout(() => { timers.delete(t); fn(); }, ms);
+      timers.add(t);
+    };
     let versao: number | null | undefined;  // geração do TSE já exibida
     let pontos: PontoHistorico[] = [];
     let acompanhados = new Set<string>();    // candidatos que o gráfico acompanha (top 30)
+    let vivo = false;
+    let seguranca: ReturnType<typeof setTimeout> | undefined;
+    let rodando = false, deNovo = false;     // aviso + timer + volta da aba não duplicam requisições
 
     const carregar = async () => {
-      clearTimeout(timer);
+      if (rodando) { deNovo = true; return; }
+      rodando = true;
+      clearTimeout(seguranca);
       try {
         const r = await buscarResultado(uf, cargo, ctrl.signal);
         if (r.instante !== versao) {
@@ -92,13 +104,48 @@ export function App() {
         setErro(undefined);
       } catch (e) {
         if (!ctrl.signal.aborted) setErro((e as Error).message);
+      } finally {
+        rodando = false;
       }
-      if (!ctrl.signal.aborted) timer = setTimeout(carregar, cfg.intervaloMs);
+      if (ctrl.signal.aborted) return;
+      if (deNovo) { deNovo = false; void carregar(); return; }
+      seguranca = setTimeout(carregar, vivo ? SEGURANCA_MS : cfg.intervaloMs);
     };
+
+    let fonte: EventSource | undefined;
+    let jaAbriu = false;
+    const conectar = () => {
+      fonte = new EventSource(`/api/eventos?uf=${uf}&cargo=${cargo}`);
+      fonte.onopen = () => {
+        vivo = true; setAoVivo(true);
+        if (jaAbriu) void carregar(); // reconectou: confere o que pode ter perdido
+        jaAbriu = true;
+      };
+      fonte.addEventListener('atualizacao', (ev) => {
+        const { instante, espalharMs } = JSON.parse((ev as MessageEvent<string>).data) as { instante: number | null; espalharMs?: number };
+        if (instante !== versao) depois(() => void carregar(), Math.random() * (espalharMs ?? ESPALHAR_MS));
+      });
+      fonte.onerror = () => {
+        vivo = false; setAoVivo(false);
+        // CONNECTING: o navegador já está reconectando. CLOSED: recusado (ex.: 503), tenta em 1 min
+        if (fonte?.readyState === EventSource.CLOSED && !ctrl.signal.aborted) depois(conectar, 60_000);
+        clearTimeout(seguranca);
+        seguranca = setTimeout(carregar, cfg.intervaloMs);
+      };
+    };
+
     const aoVoltar = () => { if (!document.hidden) void carregar(); };
     document.addEventListener('visibilitychange', aoVoltar);
     void carregar();
-    return () => { ctrl.abort(); clearTimeout(timer); document.removeEventListener('visibilitychange', aoVoltar); };
+    conectar();
+    return () => {
+      ctrl.abort();
+      fonte?.close();
+      clearTimeout(seguranca);
+      timers.forEach(clearTimeout);
+      setAoVivo(false);
+      document.removeEventListener('visibilitychange', aoVoltar);
+    };
   }, [cfg, cargoAtual, uf, cargo, por]);
 
   // Cores: os 8 mais votados agora, distribuídos pela ordem do número (não do placar),
@@ -134,7 +181,9 @@ export function App() {
           {erro
             ? `Sem conexão com os resultados (${erro}). Nova tentativa em ${(cfg?.intervaloMs ?? 30000) / 1000}s.`
             : resultado?.instante
-              ? <><span className="ao-vivo" aria-hidden="true" />TSE atualizou às {horaMinuto(resultado.instante)}</>
+              ? aoVivo
+                ? <><span className="ao-vivo" aria-hidden="true" />Ao vivo. TSE atualizou às {horaMinuto(resultado.instante)}</>
+                : <>TSE atualizou às {horaMinuto(resultado.instante)}. Conferindo a cada {(cfg?.intervaloMs ?? 30000) / 1000}s</>
               : 'Carregando…'}
         </p>
       </header>
@@ -205,7 +254,7 @@ export function App() {
         ativo={ativo} onDestacar={setDestacado} onFixar={fixar} tema={tema} />
 
       <footer className="rodape">
-        Fonte: TSE{resultado?.atualizadoEm ? `, dados gerados em ${resultado.atualizadoEm}` : ''}. Atualiza sozinho a cada {(cfg?.intervaloMs ?? 30000) / 1000}s.
+        Fonte: TSE{resultado?.atualizadoEm ? `, dados gerados em ${resultado.atualizadoEm}` : ''}. A tela se atualiza sozinha quando o TSE publica dados novos.
       </footer>
     </main>
   );
