@@ -2,7 +2,7 @@ import webpush, { type PushSubscription } from 'web-push';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { db } from './banco.ts';
-import { config, CARGOS } from './config.ts';
+import { config, CARGOS, env, envNumero } from './config.ts';
 import { NOMES_UF } from '../shared/ufs.ts';
 import type { Resultado } from '../shared/tipos.ts';
 
@@ -16,13 +16,14 @@ const PST_MIN_VIRADA = 5;                 // antes disso a liderança oscila dem
 const MARCOS = [0, 25, 50, 75, 90, 100];  // 0 = "começou"
 const CONCORRENCIA = 25;                  // envios simultâneos (cada um é uma requisição ao push service)
 const MAX_DISPUTAS_POR_APARELHO = 30;
-const MAX_INSCRICOES = Number(process.env.MAX_INSCRICOES ?? 50_000);
+const MAX_INSCRICOES = envNumero('MAX_INSCRICOES', 50_000);
 
 // --- Chaves VAPID: identificam este servidor nos push services. Precisam ser estáveis:
 // se mudarem, todas as inscrições existentes deixam de funcionar. Ficam no volume.
 function carregarVapid() {
-  if (process.env.VAPID_PUBLICA && process.env.VAPID_PRIVADA) {
-    return { publicKey: process.env.VAPID_PUBLICA, privateKey: process.env.VAPID_PRIVADA };
+  const publicKey = env('VAPID_PUBLICA'), privateKey = env('VAPID_PRIVADA');
+  if (publicKey && privateKey) {
+    return { publicKey, privateKey };
   }
   const arquivo = join(dirname(config.historicoDb), 'vapid.json');
   if (existsSync(arquivo)) return JSON.parse(readFileSync(arquivo, 'utf8')) as { publicKey: string; privateKey: string };
@@ -32,8 +33,8 @@ function carregarVapid() {
   return chaves;
 }
 const vapid = carregarVapid();
-const contato = process.env.VAPID_CONTATO ?? 'mailto:apuracao@example.com';
-if (!process.env.VAPID_CONTATO) console.warn('VAPID_CONTATO não definido: a Apple pode recusar pushes sem um contato real (mailto: ou https:)');
+const contato = env('VAPID_CONTATO') ?? 'mailto:apuracao@example.com';
+if (!env('VAPID_CONTATO')) console.warn('VAPID_CONTATO não definido: a Apple pode recusar pushes sem um contato real (mailto: ou https:)');
 webpush.setVapidDetails(contato, vapid.publicKey, vapid.privateKey);
 export const chavePublica = vapid.publicKey;
 
@@ -45,7 +46,7 @@ const HOSTS_PUSH = [
   /(^|\.)push\.apple\.com$/,                                        // Safari / iOS
   /(^|\.)notify\.windows\.com$/,                                    // Edge legado / Windows
 ];
-const HOSTS_EXTRA = (process.env.PUSH_HOSTS_EXTRA ?? '').split(',').map((h) => h.trim()).filter(Boolean);
+const HOSTS_EXTRA = (env('PUSH_HOSTS_EXTRA') ?? '').split(',').map((h) => h.trim()).filter(Boolean);
 
 export function inscricaoValida(x: unknown): x is PushSubscription {
   const s = x as PushSubscription | undefined;

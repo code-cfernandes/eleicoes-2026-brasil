@@ -1,13 +1,29 @@
+# Variáveis: localmente vêm do .env (lido automaticamente pelo docker compose);
+# no Portainer, da seção "Environment variables" da stack. Sem valor, vale o padrão após ":-".
 services:
   apuracao:
     build: .
-    env_file: .env
+    image: apuracao-tse:latest
     environment:
-      HISTORICO_DB: /app/data/eleicoes.db # sempre no volume, independente do .env
+      TSE_BASE: ${TSE_BASE:-https://resultados.tse.jus.br/oficial}
+      CICLO: ${CICLO:-ele2026}
+      TURNO: ${TURNO:-1º turno}
+      # Códigos do 1º turno de 2026; no 2º turno, troque (npm run eleicoes lista os códigos)
+      ELEICAO_FEDERAL: ${ELEICAO_FEDERAL:-6257}
+      ELEICAO_ESTADUAL: ${ELEICAO_ESTADUAL:-6259}
+      CACHE_SEGUNDOS: ${CACHE_SEGUNDOS:-30}
+      MONITORAR: ${MONITORAR:-br:1}
+      MAX_CONEXOES: ${MAX_CONEXOES:-5000}
+      MAX_INSCRICOES: ${MAX_INSCRICOES:-50000}
+      VAPID_CONTATO: ${VAPID_CONTATO:-}
+      VAPID_PUBLICA: ${VAPID_PUBLICA:-}
+      VAPID_PRIVADA: ${VAPID_PRIVADA:-}
+      # Fixos: dentro do container, sempre no volume e na porta 3000
+      HISTORICO_DB: /app/data/eleicoes.db
       FOTOS_DIR: /app/data/fotos
       PORT: 3000
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORTA_HOST:-3000}:3000"
     volumes:
       - dados:/app/data
     restart: unless-stopped

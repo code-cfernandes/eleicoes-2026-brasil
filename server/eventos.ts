@@ -1,11 +1,12 @@
 import type { Request, Response } from 'express';
+import { envNumero } from './config.ts';
 
 // Server-Sent Events: cada aparelho mantém uma conexão aberta para a disputa que está vendo.
 // O evento é só uma "campainha" (versão nova do TSE); os dados continuam vindo pelas rotas
 // HTTP, que já têm cache, gzip, ETag e histórico incremental. Assim o custo de um aviso
 // é escrever ~60 bytes por conexão, não serializar/comprimir o JSON N vezes.
 
-const MAX_CONEXOES = Number(process.env.MAX_CONEXOES ?? 5000);
+const MAX_CONEXOES = envNumero('MAX_CONEXOES', 5000);
 const PING_MS = 25_000;             // abaixo do timeout ocioso típico de proxies (60s)
 const BUFFER_MAX = 64 * 1024;       // cliente que não consome nem isso está travado: derruba
 

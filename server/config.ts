@@ -1,6 +1,19 @@
 import type { Cargo, TipoEleicao } from '../shared/tipos.ts';
 
-// Tudo que muda entre eleições/turnos fica aqui (via .env), nada hardcoded no resto do código.
+// Tudo que muda entre eleições/turnos fica aqui (via variáveis de ambiente), nada hardcoded no resto do código.
+
+// Variável vazia conta como não definida: no Portainer/compose é comum ficar "VAR=" em branco,
+// e um "" virando 0 (intervalo, limite) seria desastroso.
+export function env(nome: string): string | undefined {
+  const v = process.env[nome]?.trim();
+  return v ? v : undefined;
+}
+// Número positivo ou o padrão (nunca NaN/0 por engano)
+export function envNumero(nome: string, padrao: number): number {
+  const n = Number(env(nome));
+  return Number.isFinite(n) && n > 0 ? n : padrao;
+}
+
 export const UFS = 'ac al ap am ba ce df es go ma mt ms mg pa pb pr pe pi rj rn rs ro rr sc sp se to'.split(' ');
 
 // Código do cargo no TSE -> eleição a que pertence e onde há resultado publicado
@@ -29,17 +42,17 @@ function expandirMonitorar(spec: string): [string, number][] {
 }
 
 export const config = {
-  base: process.env.TSE_BASE ?? 'https://resultados.tse.jus.br/oficial',
-  ciclo: process.env.CICLO ?? 'ele2026',
-  turno: process.env.TURNO ?? '1º turno',
+  base: env('TSE_BASE') ?? 'https://resultados.tse.jus.br/oficial',
+  ciclo: env('CICLO') ?? 'ele2026',
+  turno: env('TURNO') ?? '1º turno',
   eleicao: {
-    federal: process.env.ELEICAO_FEDERAL,   // presidente
-    estadual: process.env.ELEICAO_ESTADUAL, // governador, senador, deputados
+    federal: env('ELEICAO_FEDERAL'),   // presidente
+    estadual: env('ELEICAO_ESTADUAL'), // governador, senador, deputados
   } satisfies Record<TipoEleicao, string | undefined>,
-  cacheMs: Number(process.env.CACHE_SEGUNDOS ?? 30) * 1000,
-  port: Number(process.env.PORT ?? 3000),
-  historicoDb: process.env.HISTORICO_DB ?? 'data/eleicoes.db',
-  fotosDir: process.env.FOTOS_DIR ?? 'data/fotos',
+  cacheMs: envNumero('CACHE_SEGUNDOS', 30) * 1000,
+  port: envNumero('PORT', 3000),
+  historicoDb: env('HISTORICO_DB') ?? 'data/eleicoes.db',
+  fotosDir: env('FOTOS_DIR') ?? 'data/fotos',
   // Pares uf:cargo coletados em background para o histórico.
-  monitorar: expandirMonitorar(process.env.MONITORAR ?? 'br:1'),
+  monitorar: expandirMonitorar(env('MONITORAR') ?? 'br:1'),
 };
