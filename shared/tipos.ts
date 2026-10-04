@@ -73,6 +73,9 @@ export interface EstadoPanorama {
   lider: Candidato | null;
   /** Diferença do líder para o 2º, em pontos percentuais */
   vantagem: number | null;
+  /** Contagem exata de seções, para agregar o total por região; ausente em respostas antigas */
+  secoesTotalizadas?: number;
+  secoes?: number;
 }
 
 export interface Panorama {

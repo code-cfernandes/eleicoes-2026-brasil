@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Candidato, ConfigPublica, EstadoPanorama, Panorama, PontoHistorico, Resultado, VisaoEstado } from '../../../shared/tipos.ts';
-import { NOMES_UF } from '../../../shared/ufs.ts';
+import { NOMES_UF, REGIOES } from '../../../shared/ufs.ts';
 import { ajustarCandidatos, buscarEstado, buscarHistorico, buscarPanorama, buscarResultado, mesclarHistorico } from '../api.ts';
 import { dataHora, pct, votos } from '../formato.ts';
 import { Avisos } from './Avisos.tsx';
@@ -437,14 +437,19 @@ function ResumoMini({ titulo, candidatos, vagas }: { titulo: string; candidatos:
   );
 }
 
-// "Pelo país": grade compacta das 27 UFs, líder de Presidente em cada uma
+// "Pelo país": cards por região, com o total já apurado da região e o de cada estado
 function PeloPais({ panorama, onAbrirEstado, onAbrirPorEstado }: {
   panorama: Panorama | undefined; onAbrirEstado: (uf: string) => void; onAbrirPorEstado: () => void;
 }) {
   const todos = panorama?.estados ?? [];
   const exterior = todos.find((e) => e.uf === 'zz');
-  const estados = useMemo(() => todos.filter((e) => e.uf !== 'zz').sort((a, b) => nome(a.uf).localeCompare(nome(b.uf), 'pt-BR')), [todos]);
+  const porUf = useMemo(() => new Map(todos.filter((e) => e.uf !== 'zz').map((e) => [e.uf, e])), [todos]);
+  const estados = [...porUf.values()];
   const concluidos = estados.filter((e) => (e.pst ?? 0) >= 100).length;
+  const regioes = REGIOES.filter((r) => r.nome !== 'Exterior').map((r) => ({
+    nome: r.nome,
+    ufs: r.ufs.map((uf) => porUf.get(uf)).filter((e): e is EstadoPanorama => !!e),
+  }));
 
   return (
     <section className="inicio-bloco inicio-pelo-pais" aria-labelledby="inicio-pelo-pais-titulo">
@@ -456,9 +461,9 @@ function PeloPais({ panorama, onAbrirEstado, onAbrirPorEstado }: {
         {panorama ? `${concluidos} de ${estados.length} estados concluíram a totalização.` : 'Carregando…'}
       </p>
 
-      {estados.length > 0 && (
-        <div className="inicio-grade-estados" role="list">
-          {estados.map((e) => <QuadradoEstado key={e.uf} e={e} onAbrir={onAbrirEstado} />)}
+      {regioes.length > 0 && (
+        <div className="inicio-regioes">
+          {regioes.map((r) => <CardRegiao key={r.nome} nome={r.nome} estados={r.ufs} onAbrir={onAbrirEstado} />)}
         </div>
       )}
 
@@ -473,16 +478,37 @@ function PeloPais({ panorama, onAbrirEstado, onAbrirPorEstado }: {
   );
 }
 
-function QuadradoEstado({ e, onAbrir }: { e: EstadoPanorama; onAbrir: (uf: string) => void }) {
-  const pst = e.pst ?? 0;
-  const descricao = `${nome(e.uf)}: ${e.pst === null ? 'sem dados' : `${pct(e.pst)} totalizado`}${e.lider ? `, ${e.lider.nome} lidera` : ''}`;
+// Card de uma região: total já apurado (seções da região) + cada estado com seu percentual
+function CardRegiao({ nome: nomeRegiao, estados, onAbrir }: { nome: string; estados: EstadoPanorama[]; onAbrir: (uf: string) => void }) {
+  const secoes = estados.reduce((s, e) => s + (e.secoes ?? 0), 0);
+  const totalizadas = estados.reduce((s, e) => s + (e.secoesTotalizadas ?? 0), 0);
+  // Prefere o total ponderado por seções; sem esse dado, a média dos percentuais
+  const pstRegiao = secoes > 0
+    ? (totalizadas / secoes) * 100
+    : estados.some((e) => e.pst !== null) ? estados.reduce((s, e) => s + (e.pst ?? 0), 0) / estados.length : null;
+
   return (
-    <button type="button" className="inicio-quadrado" aria-label={descricao} onClick={() => onAbrir(e.uf)}>
-      <Bandeira uf={e.uf} />
-      <span className="inicio-quadrado-sigla">{e.uf.toUpperCase()}</span>
-      <span className="inicio-quadrado-trilho" aria-hidden="true"><span style={{ width: `${pst}%` }} /></span>
-      {e.lider ? <Foto c={e.lider} /> : <span className="inicio-quadrado-vazio" aria-hidden="true" />}
-    </button>
+    <div className="regiao-card">
+      <div className="regiao-card-cabecalho">
+        <h3>{nomeRegiao}</h3>
+        <span className="regiao-card-total">{pstRegiao === null ? 'sem dados' : `${pct(pstRegiao)} apurado`}</span>
+      </div>
+      <div className="trilho" aria-hidden="true"><span style={{ width: `${pstRegiao ?? 0}%` }} /></div>
+      <ol className="regiao-ufs">
+        {estados.map((e) => (
+          <li key={e.uf}>
+            <button type="button" className="regiao-uf"
+              aria-label={`${nome(e.uf)}: ${e.pst === null ? 'sem dados' : `${pct(e.pst)} totalizado`}`}
+              onClick={() => onAbrir(e.uf)}>
+              <Bandeira uf={e.uf} />
+              <span className="regiao-uf-nome">{nome(e.uf)}</span>
+              <span className="regiao-uf-trilho" aria-hidden="true"><span style={{ width: `${e.pst ?? 0}%` }} /></span>
+              <span className="regiao-uf-pct">{e.pst === null ? '–' : pct(e.pst)}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

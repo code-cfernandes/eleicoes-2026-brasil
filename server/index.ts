@@ -130,6 +130,8 @@ app.get('/api/panorama', async (req: Request, res: Response) => {
           instante: r?.instante ?? null,
           lider: primeiro ?? null,
           vantagem: primeiro && segundo ? primeiro.percentual - segundo.percentual : null,
+          secoesTotalizadas: r?.totais?.secoesTotalizadas,
+          secoes: r?.totais?.secoes,
         };
       }),
     };
