@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Panorama } from '../../../shared/tipos.ts';
 import { buscarPanorama } from '../api.ts';
 import { pct } from '../formato.ts';
-import { MAX_SERIES } from '../paleta.ts';
+import { MAX_SERIES, corFixa } from '../paleta.ts';
 import { MapaBrasil } from './MapaBrasil.tsx';
 
 // Página "Mapa": totalização por estado, com alternância de cargo (Presidente/Governador/
@@ -60,8 +60,10 @@ export function Mapa({ intervaloMs, onAbrirEstado, onVerComoLista, cargoInicial,
       .slice(0, MAX_SERIES)
       .map((n, i) => [n, i] as const));
   }, [dados]);
-  const corDoCandidato = useCallback((n: string) => {
-    const s = slots.get(n);
+  const corDoCandidato = useCallback((c: { numero: string; nome: string }) => {
+    const fixa = corFixa(c.nome);
+    if (fixa) return fixa;
+    const s = slots.get(c.numero);
     return s === undefined ? undefined : `var(--s${s})`;
   }, [slots]);
 

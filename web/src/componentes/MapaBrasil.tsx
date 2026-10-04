@@ -35,7 +35,7 @@ interface Props {
   estados: EstadoPanorama[];
   rotuloLider: string;
   modo?: ModoMapa;
-  corDoCandidato?: (numero: string) => string | undefined;
+  corDoCandidato?: (c: { numero: string; nome: string }) => string | undefined;
   selecionado?: string;
   onSelecionar: (uf: string) => void;
   verComoLista?: () => void;
@@ -176,7 +176,7 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
 
   function corLider(e: EstadoPanorama | undefined): string {
     if (!e?.lider || !corDoCandidato) return 'var(--mapa-vazio)';
-    const cor = corDoCandidato(e.lider.numero);
+    const cor = corDoCandidato(e.lider);
     return cor || 'var(--mapa-sem-cor)';
   }
 
@@ -506,7 +506,7 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
                   <span
                     className="mb-legenda-swatch mb-legenda-swatch-redonda"
                     aria-hidden="true"
-                    style={{ background: corDoCandidato?.(l.numero) || 'var(--mapa-sem-cor)' }}
+                    style={{ background: corDoCandidato?.({ numero: l.numero, nome: l.nome }) || 'var(--mapa-sem-cor)' }}
                   />
                   {l.nome} · {l.estados} {l.estados === 1 ? 'estado' : 'estados'}
                 </span>

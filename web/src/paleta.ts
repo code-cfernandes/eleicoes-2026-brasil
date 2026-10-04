@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { semAcento } from './formato.ts';
 
 // Paleta categórica validada (separação para daltonismo) em cada modo.
 // A ordem é fixa; a cor segue o candidato, nunca a posição no placar.
@@ -64,3 +65,14 @@ export function useTema(): [Tema, () => void] {
 export const corSerie = (tema: Tema, slot: number | undefined) =>
   slot === undefined ? NEUTROS[tema].contexto : SERIES[tema][slot]!;
 export const neutros = (tema: Tema) => NEUTROS[tema];
+
+// Cores fixas para candidatos específicos (escolha do dono do projeto); o resto usa a série
+// automática. As cores são variáveis CSS para acompanharem o tema claro/escuro.
+const CORES_FIXAS: { trecho: string; cor: string }[] = [
+  { trecho: 'lula', cor: 'var(--vermelho)' },
+  { trecho: 'flavio', cor: 'var(--s0)' },
+];
+export const corFixa = (nome: string): string | undefined => {
+  const n = semAcento(nome.toLowerCase());
+  return CORES_FIXAS.find((f) => n.includes(f.trecho))?.cor;
+};

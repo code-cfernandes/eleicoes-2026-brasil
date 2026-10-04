@@ -9,7 +9,7 @@ import { Foto } from './Cartao.tsx';
 import { Evolucao } from './Evolucao.tsx';
 import { MapaBrasil } from './MapaBrasil.tsx';
 import { Novidades } from './Novidades.tsx';
-import { corSerie, MAX_SERIES, type Tema } from '../paleta.ts';
+import { corFixa, corSerie, MAX_SERIES, type Tema } from '../paleta.ts';
 import { ResumoLideranca } from './ResumoLideranca.tsx';
 
 // Página inicial: o que a maioria quer saber em poucos segundos, sem precisar escolher
@@ -269,7 +269,7 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
           </div>
           {panorama ? (
             <MapaBrasil estados={panorama.estados} rotuloLider="Presidente" modo="lider"
-              corDoCandidato={(n) => corSerie(tema, slots.get(n))} onSelecionar={onAbrirEstado} />
+              corDoCandidato={(c) => corFixa(c.nome) ?? corSerie(tema, slots.get(c.numero))} onSelecionar={onAbrirEstado} />
           ) : (
             <p className="resumo-estados">Carregando…</p>
           )}
