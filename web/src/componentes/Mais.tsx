@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import type { Tema } from '../paleta.ts';
 import { StatusDados } from './StatusDados.tsx';
-import { IconeCompartilhar, IconeFonte, IconeLink, IconeMetodologia, IconeSobre } from './Icones.tsx';
+import { IconeCompartilhar, IconeFonte, IconeLink, IconeLua, IconeMetodologia, IconeSobre, IconeSol } from './Icones.tsx';
 
 function IconeGitHub() {
   return (
@@ -68,7 +69,7 @@ function SobreOProjeto({ onFechar }: { onFechar: () => void }) {
   );
 }
 
-export function Mais() {
+export function Mais({ tema, onAlternarTema }: { tema: Tema; onAlternarTema: () => void }) {
   const [tela, setTela] = useState<'lista' | 'sobre' | 'metodologia'>('lista');
   const [compartilhado, setCompartilhado] = useState(false);
 
@@ -99,6 +100,14 @@ export function Mais() {
         <ItemLista icone={<IconeMetodologia />} titulo="Metodologia" descricao="Como os dados são processados" onClick={() => setTela('metodologia')} />
         <ItemLista icone={<IconeCompartilhar />} titulo="Compartilhar" descricao={compartilhado ? 'Link copiado!' : 'Envie para seus amigos'} onClick={() => void compartilhar()} />
         <ItemLista icone={<IconeGitHub />} titulo="Código aberto" descricao="Veja no GitHub e deixe sua estrela" href={URL_REPOSITORIO} externo />
+      </div>
+
+      <div className="mais-lista">
+        <ItemLista
+          icone={tema === 'escuro' ? <IconeSol /> : <IconeLua />}
+          titulo={tema === 'escuro' ? 'Tema claro' : 'Tema escuro'}
+          descricao={tema === 'escuro' ? 'Mudar para o tema claro' : 'Mudar para o tema escuro'}
+          onClick={onAlternarTema} />
       </div>
 
       <StatusDados />
