@@ -138,6 +138,8 @@ export interface EventoApuracao {
   uf: string;    // 'br', UF ou 'zz'
   cargo: number;
   texto: string; // frase pronta em português, neutra
+  /** 'ia' quando o texto foi redigido pela DeepSeek (ausente nas frases-modelo do código) */
+  fonte?: 'ia';
 }
 
 export interface RespostaNovidades {

@@ -67,7 +67,7 @@ Três frentes em paralelo, cada uma dona de arquivos diferentes. Contrato de dad
 
 - "Governadores pelo país" (quantos eleitos no 1º turno, quantos vão ao 2º), a partir de `/api/panorama?cargo=3`.
 - Borda de destaque para quem está à frente nos cards (proposta feita, não aprovada).
-- Uso de IA (DeepSeek) para textos: descartado para eventos e notificações ao vivo (exatidão e neutralidade); possível para revisar frases-modelo ou um resumo pós-resultado revisado à mão.
+- "Notícia" por IA em todos os cargos (hoje só Presidente/Brasil): estender a redação da DeepSeek a Governador/Senador, mantendo a detecção determinística.
 - Cache das fotos na Cloudflare (Cache Rule para `/api/foto/*`).
 
 ## Decisões registradas
@@ -75,7 +75,8 @@ Três frentes em paralelo, cada uma dona de arquivos diferentes. Contrato de dad
 - Testes com o **TSE oficial**; simulador descartado depois que a totalização real começou.
 
 - Termo **totalização** (soma dos boletins pelo TSE), não apuração, para o que o site mostra.
-- Eventos e notificações são **estatísticos e neutros**, gerados por frases-modelo no código.
+- Eventos e notificações são **estatísticos e neutros**; a detecção continua por frases-modelo no código.
+- **IA (DeepSeek)**: só reescreve o **texto** dos eventos de Presidente/Brasil na linha do tempo (opcional, via `DEEPSEEK_API_KEY`), sobre os fatos já detectados — nunca inventa números/nomes. A frase-modelo fica como fallback e a notificação push continua determinística.
 - Mapa com escala **sequencial de uma cor**, nunca semáforo; sempre com lista como alternativa.
 - Percentuais de candidatos são sobre **votos válidos**; brancos, nulos e abstenção à parte, sobre o total.
 - Deputados: eleição **proporcional**, ninguém é marcado como eleito pela posição.

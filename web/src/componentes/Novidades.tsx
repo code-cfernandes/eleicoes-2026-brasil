@@ -59,7 +59,9 @@ export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas }:
           const e = JSON.parse((ev as MessageEvent<string>).data) as EventoApuracao;
           setEventos((atual) => {
             const lista = atual ?? [];
-            if (lista.some((x) => x.id === e.id)) return lista;
+            const jaTem = lista.some((x) => x.id === e.id);
+            // O mesmo id pode chegar de novo (a IA substitui o texto depois): atualiza em vez de duplicar
+            if (jaTem) return lista.map((x) => (x.id === e.id ? e : x));
             return [e, ...lista].slice(0, limite ?? 30);
           });
           setDisponivel(true);
@@ -115,7 +117,10 @@ export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas }:
             <li key={e.id} className="novidade-item">
               <span className={`novidade-ponto ${corPonto(e.tipo)}`} aria-hidden="true" />
               <span className="novidade-hora">{horaMinuto(e.instante)}</span>
-              <span className="novidade-texto">{e.texto}{local(e.uf)}</span>
+              <span className="novidade-texto">
+                {e.texto}{local(e.uf)}
+                {e.fonte === 'ia' && <span className="novidade-ia" title="Texto redigido por IA (DeepSeek)">IA</span>}
+              </span>
             </li>
           ))}
         </ol>

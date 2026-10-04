@@ -21,6 +21,11 @@ services:
       VAPID_CONTATO: ${VAPID_CONTATO:-}
       VAPID_PUBLICA: ${VAPID_PUBLICA:-}
       VAPID_PRIVADA: ${VAPID_PRIVADA:-}
+      # IA (DeepSeek): opcional. Sem DEEPSEEK_API_KEY, a linha do tempo usa só as frases-modelo.
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      IA_INTERVALO_MIN: ${IA_INTERVALO_MIN:-15}
       # Fixos: dentro do container, sempre no volume e na porta 3000
       HISTORICO_DB: /app/data/eleicoes.db
       FOTOS_DIR: /app/data/fotos

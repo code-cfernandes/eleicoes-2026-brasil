@@ -3,6 +3,7 @@ import { CARGOS } from './config.ts';
 import { votosTotaisAte } from './historico.ts';
 import { nomeProprio, type Deteccao } from './notificacoes.ts';
 import { CANAL_NOVIDADES, transmitir } from './eventos.ts';
+import { iaDisponivel, intervaloIaMs, redigir } from './ia.ts';
 import { NOMES_UF } from '../shared/ufs.ts';
 import type { EventoApuracao, Resultado, TipoEvento } from '../shared/tipos.ts';
 
@@ -68,13 +69,21 @@ db.exec(`
   ) WITHOUT ROWID;
 `);
 
+// Migração aditiva: 1 = texto já redigido pela IA (DeepSeek); 0 = frase-modelo ainda no lugar
+const colunasNovidade = new Set((db.prepare('PRAGMA table_info(novidade)').all() as { name: string }[]).map((c) => c.name));
+if (!colunasNovidade.has('ia')) db.exec('ALTER TABLE novidade ADD COLUMN ia INTEGER NOT NULL DEFAULT 0');
+
 const sql = {
   inserir: db.prepare(`INSERT OR IGNORE INTO novidade (chave, instante, tipo, uf, cargo, texto, criado_em)
     VALUES (?, ?, ?, ?, ?, ?, ?)`),
   ultimoId: db.prepare('SELECT coalesce(max(id), 0) AS id FROM novidade'),
   ultimoDoTipo: db.prepare('SELECT instante FROM novidade WHERE tipo = ? AND cargo = ? ORDER BY id DESC LIMIT 1'),
-  ler: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto FROM novidade
+  ler: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto, ia FROM novidade
     WHERE id > ? ORDER BY id DESC LIMIT ?`),
+  // Presidente/Brasil ainda com frase-modelo, do mais antigo para o mais novo (fila de redação)
+  pendenteIA: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto FROM novidade
+    WHERE uf = 'br' AND cargo = 1 AND ia = 0 ORDER BY id LIMIT 1`),
+  marcarIA: db.prepare('UPDATE novidade SET texto = ?, ia = 1 WHERE id = ?'),
   estado: db.prepare('SELECT valor FROM novidade_estado WHERE chave = ?'),
   salvarEstado: db.prepare(`INSERT INTO novidade_estado (chave, valor) VALUES (?, ?)
     ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor`),
@@ -279,14 +288,41 @@ function diferenca(d: Resultado, instante: number): EventoApuracao | null {
 // --- Leitura (GET /api/novidades): corpo pronto por (desde, limite) enquanto não há evento novo
 const prontos = new Map<string, Buffer>();
 
+interface LinhaNovidade { id: number; instante: number; tipo: TipoEvento; uf: string; cargo: number; texto: string; ia?: number }
+
 export function lerNovidades(desde: number, limite: number): Buffer {
   const chave = `${desde}:${limite}`;
   let json = prontos.get(chave);
   if (!json) {
-    const eventos = sql.ler.all(desde, limite) as unknown as EventoApuracao[];
+    const linhas = sql.ler.all(desde, limite) as unknown as LinhaNovidade[];
+    const eventos: EventoApuracao[] = linhas.map(({ ia, ...e }) => ({ ...e, ...(ia ? { fonte: 'ia' as const } : {}) }));
     json = Buffer.from(JSON.stringify({ eventos }));
     if (prontos.size > 500) prontos.clear();
     prontos.set(chave, json);
   }
   return json;
+}
+
+// --- Redação por IA (DeepSeek): reescreve, aos poucos, o texto dos eventos de Presidente/Brasil.
+// A detecção continua determinística e a frase-modelo é gravada na hora (nunca fica vazio); a IA
+// só substitui o texto depois, no ritmo de ~1 chamada por IA_INTERVALO_MIN. Sem chave ou em
+// qualquer falha, a frase-modelo permanece e a próxima rodada tenta de novo.
+let ultimaChamadaIA = 0;
+
+export async function redigirComIA() {
+  if (!iaDisponivel() || Date.now() - ultimaChamadaIA < intervaloIaMs()) return;
+  ultimaChamadaIA = Date.now();
+  try {
+    const p = sql.pendenteIA.get() as LinhaNovidade | undefined;
+    if (!p) return;
+    const textoIA = await redigir(p.texto);
+    if (!textoIA) return;
+    sql.marcarIA.run(textoIA, p.id);
+    prontos.clear();
+    const ev: EventoApuracao = { id: p.id, instante: p.instante, tipo: p.tipo, uf: p.uf, cargo: p.cargo, texto: textoIA, fonte: 'ia' };
+    console.log(`[ia] ${textoIA}`);
+    transmitir(CANAL_NOVIDADES, 'novidade', ev);
+  } catch (e) {
+    console.error('[ia]', (e as Error).message);
+  }
 }

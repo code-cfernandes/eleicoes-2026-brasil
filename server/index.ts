@@ -9,7 +9,7 @@ import { registrar, lerHistorico } from './historico.ts';
 import { fechar } from './banco.ts';
 import { obterFoto } from './fotos.ts';
 import { assinar, CANAL_NOVIDADES, conexoesAbertas, disputasAssistidas, encerrarTodas, notificar } from './eventos.ts';
-import { idMaisRecente, lerNovidades, processar, pulsar } from './novidades.ts';
+import { idMaisRecente, lerNovidades, processar, pulsar, redigirComIA } from './novidades.ts';
 import {
   avaliar, chavePublica, deixarDeSeguir, disputasComInscritos, disputasSeguidas, enviar,
   estatisticasPush, inscricaoValida, renovar, seguir,
@@ -350,6 +350,10 @@ async function coletarTudo() {
 console.log(`Monitorando ${config.monitorar.length} disputa(s): ${config.monitorar.map((p) => p.join(':')).join(', ')}`);
 void coletarTudo();
 const coletor = setInterval(coletarTudo, config.cacheMs);
+
+// Redação por IA (DeepSeek): roda em intervalo próprio, fora do coletor (uma chamada lenta
+// não segura a coleta do TSE). O throttle real fica dentro de redigirComIA.
+setInterval(() => { void redigirComIA(); }, config.cacheMs);
 
 const servidor = app.listen(config.port, () => console.log(`http://localhost:${config.port}`));
 

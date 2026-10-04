@@ -418,7 +418,7 @@ button, input, select { font: inherit; color: inherit; }
 @media (min-width: 64rem) {
   .inicio-grade-2col { grid-template-columns: 1fr 1fr; }
 }
-.inicio-mapa-mini .mb-svg-area { max-height: 24rem; }
+.inicio-mapa-mini .mb-svg-area { max-height: 32rem; }
 .evolucao-compacta .grafico { height: 14rem; }
 .evolucao-compacta { margin-top: 0; }
 
@@ -494,7 +494,7 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 /* Evolução */
-.evolucao { margin-top: 3rem; background: var(--superficie); border-radius: var(--raio); padding: 1.25rem 1rem 1rem; }
+.evolucao { background: var(--superficie); border-radius: var(--raio); padding: 1.25rem 1rem 1rem; }
 .evolucao-cabecalho { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: .75rem; margin-bottom: 1rem; }
 .evolucao h2 { font: 700 1.35rem/1.1 'Barlow Condensed', sans-serif; }
 .evolucao-cabecalho p { color: var(--suave); font-size: .875rem; }
@@ -554,6 +554,11 @@ tbody th { font-weight: 500; }
 .novidade-ponto-neutro { background: var(--contexto); }
 .novidade-hora { color: var(--suave); font-size: .8125rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .novidade-texto { min-width: 0; }
+.novidade-ia {
+  display: inline-block; margin-left: .5rem; padding: 0 .35rem; vertical-align: baseline; white-space: nowrap;
+  font-size: .65rem; font-weight: 700; line-height: 1.6; color: var(--suave);
+  border: 1px solid var(--linha); border-radius: 4px;
+}
 .inicio-bloco.novidades .novidade-lista { margin-top: .75rem; }
 .inicio-bloco.novidades .novidade-item { padding: .5rem 0; font-size: .875rem; }
 
