@@ -3,7 +3,9 @@
 services:
   apuracao:
     build: .
-    image: apuracao-tse:latest
+    # A imagem é sempre compilada do Dockerfile, nunca baixada de um registry
+    # (sem isso, o "pull" do Portainer procura a imagem no Docker Hub e falha)
+    pull_policy: build
     environment:
       TSE_BASE: ${TSE_BASE:-https://resultados.tse.jus.br/oficial}
       CICLO: ${CICLO:-ele2026}
