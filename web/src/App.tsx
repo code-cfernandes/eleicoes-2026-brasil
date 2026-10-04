@@ -219,7 +219,17 @@ export function App() {
     <main>
       <header className="topo">
         <div className="topo-titulo">
-          <h1>Apuração 2026 <span>{cfg?.turno}</span></h1>
+          <h1>
+            {/* Volta à página inicial (Presidente, Brasil). Link real: Ctrl/⌘+clique abre em nova aba */}
+            <a href="/" className="topo-inicio" onClick={(e) => {
+              if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+              e.preventDefault();
+              setDisputa({ cargo: 1, uf: 'br' });
+              scrollTo({ top: 0 });
+            }}>
+              Apuração 2026 <span>{cfg?.turno}</span>
+            </a>
+          </h1>
           <a className="topo-github" href="https://github.com/code-cfernandes/eleicoes-2026-brasil" target="_blank" rel="noopener noreferrer">
             <IconeGitHub />
             Código aberto no GitHub, deixe sua estrela
