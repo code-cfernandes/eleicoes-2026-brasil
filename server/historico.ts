@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { config } from './config.ts';
-import type { PontoHistorico, Resultado } from '../shared/tipos.ts';
+import type { PontoHistorico, RespostaHistorico, Resultado } from '../shared/tipos.ts';
 
 mkdirSync(dirname(config.historicoDb), { recursive: true });
 const db = new DatabaseSync(config.historicoDb);
@@ -68,8 +68,11 @@ const snapshots = db.prepare(`
     FROM snapshot
     WHERE uf = :uf AND cargo = :cargo AND pst > 0
   )
-  WHERE :todos OR ultimo_da_hora = 1
+  WHERE (:todos OR ultimo_da_hora = 1) AND instante > :desde
   ORDER BY instante`);
+
+const maisRecente = db.prepare(
+  'SELECT id FROM snapshot WHERE uf = ? AND cargo = ? AND pst > 0 ORDER BY instante DESC LIMIT 1');
 
 const votos = db.prepare(`
   SELECT snapshot_id, numero, nome, votos, percentual FROM voto
@@ -83,23 +86,33 @@ const topDoSnapshot = db.prepare(
 // Evolução da disputa. por='hora' devolve o último snapshot de cada hora;
 // por='todos' devolve cada geração do TSE. Só os `top` candidatos do snapshot
 // mais recente vêm junto (deputados têm milhares de candidatos).
+// Com `desde` (instante do último ponto que o cliente já tem) vêm só os pontos novos;
+// no modo hora, o ponto da hora corrente volta sempre que é substituído por um mais novo.
 type LinhaSnapshot = Omit<PontoHistorico, 'cand'> & { id: number };
 type LinhaVoto = PontoHistorico['cand'][number] & { snapshot_id: number };
 
 export function lerHistorico(
-  uf: string, cargo: number, { por = 'hora', top = 10 }: { por?: 'hora' | 'todos'; top?: number } = {},
-): PontoHistorico[] {
-  const pontos = snapshots.all({ uf, cargo, todos: por === 'todos' ? 1 : 0 }) as LinhaSnapshot[];
-  if (!pontos.length) return [];
+  uf: string, cargo: number,
+  { por = 'hora', top = 10, desde = 0, so }: { por?: 'hora' | 'todos'; top?: number; desde?: number; so?: string[] } = {},
+): RespostaHistorico {
+  const ultimo = maisRecente.get(uf, cargo) as { id: number } | undefined;
+  if (!ultimo) return { numeros: [], pontos: [] };
 
-  const numeros = (topDoSnapshot.all(pontos.at(-1)!.id, top) as { numero: string }[]).map((r) => r.numero);
+  // `so`: candidatos específicos (o cliente pede o passado de quem acabou de entrar no top)
+  const numeros = so ?? (topDoSnapshot.all(ultimo.id, top) as { numero: string }[]).map((r) => r.numero);
+  const pontos = snapshots.all({ uf, cargo, todos: por === 'todos' ? 1 : 0, desde }) as LinhaSnapshot[];
+  if (!pontos.length) return { numeros, pontos: [] };
+
   const linhas = votos.all({ ids: JSON.stringify(pontos.map((p) => p.id)), numeros: JSON.stringify(numeros) }) as LinhaVoto[];
   const porSnapshot = Map.groupBy(linhas, (v) => v.snapshot_id);
 
-  return pontos.map(({ id, ...p }) => ({
-    ...p,
-    cand: (porSnapshot.get(id) ?? []).map(({ snapshot_id, ...c }) => c),
-  }));
+  return {
+    numeros,
+    pontos: pontos.map(({ id, ...p }) => ({
+      ...p,
+      cand: (porSnapshot.get(id) ?? []).map(({ snapshot_id, ...c }) => c),
+    })),
+  };
 }
 
 export const fechar = () => db.close();

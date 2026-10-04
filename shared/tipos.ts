@@ -48,6 +48,13 @@ export interface PontoHistorico {
   cand: { numero: string; nome: string; votos: number; percentual: number }[];
 }
 
+export interface RespostaHistorico {
+  /** Candidatos que o gráfico acompanha (top N do snapshot mais recente) */
+  numeros: string[];
+  /** Pontos em ordem cronológica; com ?desde=, só os posteriores a ele */
+  pontos: PontoHistorico[];
+}
+
 export interface ConfigPublica {
   intervaloMs: number;
   turno: string;

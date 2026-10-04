@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ConfigPublica, PontoHistorico, Resultado } from '../../shared/tipos.ts';
-import { buscarConfig, buscarHistorico, buscarResultado } from './api.ts';
+import { ajustarCandidatos, buscarConfig, buscarHistorico, buscarResultado, mesclarHistorico } from './api.ts';
 import { Cartao } from './componentes/Cartao.tsx';
 import { Evolucao, type Granularidade } from './componentes/Evolucao.tsx';
 import { horaMinuto, pct, semAcento } from './formato.ts';
@@ -55,19 +55,41 @@ export function App() {
     setResultado(undefined); setHistorico([]);
   }, [cargo, uf]);
 
-  // Atualização automática no ritmo do cache do backend; volta da aba = dado fresco
+  // Atualização automática no ritmo do cache do backend; volta da aba = dado fresco.
+  // Sem dado novo do TSE, cada rodada custa um 304 sem corpo. Com dado novo,
+  // o histórico vem só a partir do último ponto que a tela já tem.
   useEffect(() => {
     if (!cfg || !cargoAtual?.ufs.includes(uf)) return;
     const ctrl = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
+    let versao: number | null | undefined;  // geração do TSE já exibida
+    let pontos: PontoHistorico[] = [];
+    let acompanhados = new Set<string>();    // candidatos que o gráfico acompanha (top 30)
+
     const carregar = async () => {
       clearTimeout(timer);
       try {
-        const [r, h] = await Promise.all([
-          buscarResultado(uf, cargo, ctrl.signal),
-          buscarHistorico(uf, cargo, por, NO_GRAFICO, ctrl.signal).catch(() => []), // histórico é opcional
-        ]);
-        setResultado(r); setHistorico(h); setErro(undefined);
+        const r = await buscarResultado(uf, cargo, ctrl.signal);
+        if (r.instante !== versao) {
+          setResultado(r);
+          try {
+            const desde = pontos.at(-1)?.instante ?? 0;
+            const h = await buscarHistorico(uf, cargo, por, NO_GRAFICO, desde, ctrl.signal);
+            pontos = mesclarHistorico(pontos, h.pontos, por);
+            // Quem entrou agora no top só tem os pontos novos: busca o passado só dele
+            const novatos = desde ? h.numeros.filter((n) => !acompanhados.has(n)) : [];
+            const passado = novatos.length
+              ? (await buscarHistorico(uf, cargo, por, NO_GRAFICO, 0, ctrl.signal, novatos)).pontos
+              : [];
+            acompanhados = new Set(h.numeros);
+            pontos = ajustarCandidatos(pontos, passado, por, acompanhados);
+            setHistorico(pontos);
+            versao = r.instante; // só marca como visto se o histórico também veio
+          } catch (e) {
+            if (ctrl.signal.aborted) throw e; // histórico é opcional: tenta de novo na próxima rodada
+          }
+        }
+        setErro(undefined);
       } catch (e) {
         if (!ctrl.signal.aborted) setErro((e as Error).message);
       }

@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from 'express';
+import compression from 'compression';
 import { fileURLToPath } from 'node:url';
 import { config, CARGOS } from './config.ts';
 import { buscarResultado } from './tse.ts';
@@ -7,6 +8,7 @@ import { obterFoto } from './fotos.ts';
 import type { ConfigPublica, Resultado } from '../shared/tipos.ts';
 
 const app = express();
+app.use(compression()); // JSON de deputados cai de ~250 kB para ~35 kB
 const cache = new Map<string, { expira: number; promessa: Promise<Resultado> }>();
 
 // Cache curto + dedupe: N visitantes simultâneos geram 1 requisição ao TSE por janela.
@@ -42,19 +44,33 @@ app.get('/api/resultado', async (req: Request, res: Response) => {
   const p = params(req.query.uf, req.query.cargo, res);
   if (!p) return;
   try {
-    res.json(await obter(p.uf, p.cargo));
+    const d = await obter(p.uf, p.cargo);
+    // A versão é a geração do TSE: enquanto ela não muda, o navegador recebe 304 sem corpo.
+    // no-cache = pode guardar, mas sempre pergunte antes de usar.
+    res.set({ ETag: `"${p.uf}-${p.cargo}-${d.instante ?? 0}"`, 'Cache-Control': 'no-cache' });
+    if (req.fresh) {
+      res.status(304).end();
+      return;
+    }
+    res.json(d);
   } catch (err) {
     res.status(502).json({ erro: (err as Error).message });
   }
 });
 
 // ?por=hora (padrão): último snapshot de cada hora · ?por=todos: cada geração do TSE
+// ?desde=<instante>: só o que veio depois do último ponto que o cliente já tem
 app.get('/api/historico', (req: Request, res: Response) => {
   const p = params(req.query.uf, req.query.cargo, res);
   if (!p) return;
   const por = req.query.por === 'todos' ? 'todos' : 'hora';
   const top = Math.min(Math.max(Number(req.query.top) || 10, 1), 50);
-  res.json(lerHistorico(p.uf, p.cargo, { por, top }));
+  const desde = Math.max(Number(req.query.desde) || 0, 0);
+  // ?so=13,22: só esses candidatos (no máximo 50 números)
+  const so = typeof req.query.so === 'string'
+    ? req.query.so.split(',').filter((n) => /^\d{1,6}$/.test(n)).slice(0, 50)
+    : undefined;
+  res.json(lerHistorico(p.uf, p.cargo, { por, top, desde, so }));
 });
 
 app.get('/api/foto/:cargo/:uf/:sqcand', async (req: Request<{ cargo: string; uf: string; sqcand: string }>, res: Response) => {
@@ -90,7 +106,11 @@ app.get('/api/saude', (_req, res) => {
   res.json({ ok: true });
 });
 
-app.use(express.static(fileURLToPath(new URL('../dist/web', import.meta.url))));
+// Arquivos do Vite têm hash no nome: cache de 1 ano. index.html sempre revalida.
+app.use(express.static(fileURLToPath(new URL('../dist/web', import.meta.url)), {
+  setHeaders: (res, caminho) => res.setHeader('Cache-Control',
+    caminho.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'),
+}));
 
 // Coletor em background: registra o avanço mesmo sem visitantes.
 // Poucas requisições simultâneas, para não disparar dezenas de downloads de uma vez.
