@@ -488,12 +488,35 @@ function CardRegiao({ nome: nomeRegiao, estados, onAbrir }: { nome: string; esta
     ? (totalizadas / secoes) * 100
     : estados.some((e) => e.pst !== null) ? estados.reduce((s, e) => s + (e.pst ?? 0), 0) / estados.length : null;
 
+  // Candidato que lidera em mais estados da região (a frente na região)
+  const contagem = new Map<string, { c: Candidato; n: number }>();
+  for (const e of estados) {
+    if (!e.lider) continue;
+    const atual = contagem.get(e.lider.numero);
+    if (atual) atual.n += 1;
+    else contagem.set(e.lider.numero, { c: e.lider, n: 1 });
+  }
+  let liderRegiao: Candidato | null = null;
+  let nLiderRegiao = 0;
+  for (const v of contagem.values()) {
+    if (v.n > nLiderRegiao) { liderRegiao = v.c; nLiderRegiao = v.n; }
+  }
+
   return (
     <div className="regiao-card">
       <div className="regiao-card-cabecalho">
         <h3>{nomeRegiao}</h3>
         <span className="regiao-card-total">{pstRegiao === null ? 'sem dados' : `${pct(pstRegiao)} apurado`}</span>
       </div>
+      {liderRegiao && (
+        <div className="regiao-card-lider">
+          <Foto c={liderRegiao} />
+          <span className="regiao-card-lider-texto">
+            <strong>{liderRegiao.nome}</strong>
+            <span>na frente em {nLiderRegiao} {nLiderRegiao === 1 ? 'estado' : 'estados'}</span>
+          </span>
+        </div>
+      )}
       <div className="trilho" aria-hidden="true"><span style={{ width: `${pstRegiao ?? 0}%` }} /></div>
       <ol className="regiao-ufs">
         {estados.map((e) => (

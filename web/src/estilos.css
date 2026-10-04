@@ -491,6 +491,11 @@ button, input, select { font: inherit; color: inherit; }
 .regiao-card-cabecalho { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .25rem .75rem; }
 .regiao-card-cabecalho h3 { font: 700 1.1rem/1.2 'Barlow Condensed', sans-serif; }
 .regiao-card-total { color: var(--suave); font-size: .8125rem; font-variant-numeric: tabular-nums; }
+.regiao-card-lider { display: flex; align-items: center; gap: .5rem; margin-top: .6rem; }
+.regiao-card-lider .foto { width: 2rem; height: 2rem; }
+.regiao-card-lider-texto { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.regiao-card-lider-texto strong { font-weight: 600; font-size: .8125rem; }
+.regiao-card-lider-texto span { color: var(--suave); font-size: .75rem; }
 .regiao-card .trilho { margin-top: .5rem; }
 .regiao-ufs { list-style: none; padding: 0; margin-top: .5rem; display: grid; gap: .1rem; }
 .regiao-uf {
