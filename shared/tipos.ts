@@ -57,6 +57,8 @@ export interface RespostaHistorico {
 
 export interface ConfigPublica {
   intervaloMs: number;
+  /** Chave pública VAPID para inscrever o aparelho em notificações */
+  chavePush: string;
   turno: string;
   cargos: Cargo[];
 }

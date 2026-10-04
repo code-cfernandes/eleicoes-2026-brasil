@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Apuração 2026",
+  "short_name": "Apuração",
+  "description": "Resultados das eleições 2026 com dados do TSE, atualizados durante a apuração.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#edf1f3",
+  "theme_color": "#0e7c4a",
+  "icons": [
+    { "src": "/icones/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icones/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icones/icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

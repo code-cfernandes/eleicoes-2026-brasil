@@ -1,19 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ConfigPublica, PontoHistorico, Resultado } from '../../shared/tipos.ts';
 import { ajustarCandidatos, buscarConfig, buscarHistorico, buscarResultado, mesclarHistorico } from './api.ts';
+import { Avisos } from './componentes/Avisos.tsx';
 import { Cartao } from './componentes/Cartao.tsx';
 import { Evolucao, type Granularidade } from './componentes/Evolucao.tsx';
 import { horaMinuto, pct, semAcento } from './formato.ts';
 import { corSerie, MAX_SERIES, useTema } from './paleta.ts';
+import { NOMES_UF } from '../../shared/ufs.ts';
 
-const NOMES_UF: Record<string, string> = {
-  br: 'Brasil', ac: 'Acre', al: 'Alagoas', ap: 'Amapá', am: 'Amazonas', ba: 'Bahia', ce: 'Ceará',
-  df: 'Distrito Federal', es: 'Espírito Santo', go: 'Goiás', ma: 'Maranhão', mt: 'Mato Grosso',
-  ms: 'Mato Grosso do Sul', mg: 'Minas Gerais', pa: 'Pará', pb: 'Paraíba', pr: 'Paraná',
-  pe: 'Pernambuco', pi: 'Piauí', rj: 'Rio de Janeiro', rn: 'Rio Grande do Norte',
-  rs: 'Rio Grande do Sul', ro: 'Rondônia', rr: 'Roraima', sc: 'Santa Catarina', sp: 'São Paulo',
-  se: 'Sergipe', to: 'Tocantins',
-};
 const POR_PAGINA = 24;
 const NO_GRAFICO = 30; // linhas no gráfico: as 8 coloridas + contexto em cinza
 const SEGURANCA_MS = 120_000; // com o ao vivo funcionando, só uma conferência a cada 2 min
@@ -219,6 +213,9 @@ export function App() {
             {vagas > 1 ? `, ${vagas} vagas` : ', 1 vaga'}
             {cargoAtual?.proporcional && '. Deputados são eleitos pelo quociente partidário, não só pelos mais votados'}
           </p>
+        )}
+        {cfg && cargoAtual?.ufs.includes(uf) && (
+          <Avisos uf={uf} cargo={cargo} chave={cfg.chavePush} proporcional={cargoAtual.proporcional} />
         )}
       </section>
 

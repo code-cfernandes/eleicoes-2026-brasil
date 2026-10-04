@@ -76,6 +76,18 @@ button, input, select { font: inherit; color: inherit; }
 .trilho-grande { height: 10px; margin-top: .6rem; }
 .trilho-grande > * { background: var(--verde); }
 
+/* Avisos (notificações push) */
+.avisos { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem; margin-top: 1rem; }
+.avisos-botao {
+  display: inline-flex; align-items: center; gap: .45rem; padding: .45rem .95rem; cursor: pointer;
+  border: 1px solid var(--linha); border-radius: 999px; background: var(--superficie); font-weight: 500;
+}
+.avisos-botao:hover { border-color: var(--suave); }
+.avisos-botao[aria-pressed="true"] { background: var(--verde); border-color: var(--verde); color: #fff; }
+.avisos-botao:disabled { opacity: .6; cursor: progress; }
+.avisos-dica { color: var(--suave); font-size: .8125rem; max-width: 46ch; margin-top: .25rem; }
+.avisos .avisos-dica { margin-top: 0; }
+
 /* Busca */
 .busca { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
 .busca label { flex: 1; max-width: 28rem; }

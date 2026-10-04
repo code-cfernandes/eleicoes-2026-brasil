@@ -4,9 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { config, CARGOS } from './config.ts';
 import { buscarResultado } from './tse.ts';
-import { registrar, lerHistorico, fechar } from './historico.ts';
+import { registrar, lerHistorico } from './historico.ts';
+import { fechar } from './banco.ts';
 import { obterFoto } from './fotos.ts';
 import { assinar, conexoesAbertas, disputasAssistidas, encerrarTodas, notificar } from './eventos.ts';
+import {
+  avaliar, chavePublica, deixarDeSeguir, disputasComInscritos, disputasSeguidas, enviar,
+  estatisticasPush, inscricaoValida, renovar, seguir,
+} from './notificacoes.ts';
 import type { ConfigPublica, Resultado } from '../shared/tipos.ts';
 
 const app = express();
@@ -26,6 +31,10 @@ function obter(uf: string, cargo: number): Promise<Resultado> {
     try { registrar(uf, cargo, d); } catch (e) { console.error(`[histórico ${chave}]`, (e as Error).message); }
     if (versoes.has(chave) && versoes.get(chave) !== d.instante) notificar(chave, { instante: d.instante, pst: d.secoesTotalizadas });
     versoes.set(chave, d.instante);
+    try {
+      const aviso = avaliar(d);
+      if (aviso) console.log(`[aviso ${chave}] ${aviso.corpo.split('\n')[0]} -> ${enviar(uf, cargo, aviso)} aparelho(s)`);
+    } catch (e) { console.error(`[aviso ${chave}]`, (e as Error).message); }
     return d;
   }).catch((err: unknown) => {
     cache.delete(chave); // não guarda erro em cache
@@ -117,6 +126,7 @@ app.get('/api/foto/:cargo/:uf/:sqcand', async (req: Request<{ cargo: string; uf:
 app.get('/api/config', (_req, res) => {
   const cfg: ConfigPublica = {
     intervaloMs: config.cacheMs,
+    chavePush: chavePublica,
     turno: config.turno,
     // Só oferece cargos cuja eleição está configurada no .env
     cargos: Object.values(CARGOS).filter((c) => config.eleicao[c.eleicao]),
@@ -136,8 +146,49 @@ app.get('/api/eventos', (req: Request, res: Response) => {
   void obter(p.uf, p.cargo).catch(() => {}); // começa a acompanhar a disputa já
 });
 
+// Notificações push: o aparelho segue/deixa de seguir disputas. O endpoint da inscrição
+// funciona como identificador secreto do aparelho (só ele e o push service o conhecem).
+const corpoJson = express.json({ limit: '4kb' });
+
+app.post('/api/notificacoes', corpoJson, (req: Request, res: Response) => {
+  const p = params(req.body?.uf, req.body?.cargo, res);
+  if (!p) return;
+  if (!inscricaoValida(req.body?.inscricao)) {
+    res.status(400).json({ erro: 'Inscrição de push inválida' });
+    return;
+  }
+  const erro = seguir(req.body.inscricao, p.uf, p.cargo);
+  if (erro === 'lotado') res.status(503).json({ erro: 'Limite de aparelhos inscritos atingido' });
+  else if (erro) res.status(409).json({ erro: 'Você já segue o máximo de disputas neste aparelho' });
+  else {
+    void obter(p.uf, p.cargo).catch(() => {}); // garante o estado de alerta atualizado
+    res.status(204).end();
+  }
+});
+
+app.delete('/api/notificacoes', corpoJson, (req: Request, res: Response) => {
+  const p = params(req.body?.uf, req.body?.cargo, res);
+  if (!p) return;
+  if (typeof req.body?.endpoint === 'string') deixarDeSeguir(req.body.endpoint, p.uf, p.cargo);
+  res.status(204).end();
+});
+
+app.post('/api/notificacoes/renovar', corpoJson, (req: Request, res: Response) => {
+  if (typeof req.body?.antigo !== 'string' || !inscricaoValida(req.body?.inscricao)) {
+    res.status(400).json({ erro: 'Inscrição de push inválida' });
+    return;
+  }
+  renovar(req.body.antigo, req.body.inscricao);
+  res.status(204).end();
+});
+
+// POST (e não GET) para o endpoint não ir parar em logs de URL
+app.post('/api/notificacoes/consultar', corpoJson, (req: Request, res: Response) => {
+  res.json({ disputas: typeof req.body?.endpoint === 'string' ? disputasSeguidas(req.body.endpoint) : [] });
+});
+
 app.get('/api/saude', (_req, res) => {
-  res.json({ ok: true, conexoes: conexoesAbertas() });
+  res.json({ ok: true, conexoes: conexoesAbertas(), push: estatisticasPush() });
 });
 
 // Arquivos do Vite têm hash no nome: cache de 1 ano. index.html sempre revalida.
@@ -153,7 +204,9 @@ async function coletarTudo() {
   if (coletando) return; // rodada anterior ainda não terminou
   coletando = true;
   // MONITORAR (sempre) + o que alguém está assistindo agora (só enquanto houver alguém)
-  const pares = new Map([...config.monitorar, ...disputasAssistidas()].map((p) => [p.join(':'), p] as const));
+  // e o que algum aparelho segue por notificação (o aviso precisa sair mesmo com a tela fechada)
+  const pares = new Map([...config.monitorar, ...disputasAssistidas(), ...disputasComInscritos()]
+    .map((p) => [p.join(':'), p] as const));
   const fila = [...pares.values()];
   const trabalhador = async () => {
     for (let par = fila.shift(); par; par = fila.shift()) {

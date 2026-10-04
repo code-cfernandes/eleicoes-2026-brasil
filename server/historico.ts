@@ -1,18 +1,8 @@
-import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { config } from './config.ts';
+import { db } from './banco.ts';
 import type { PontoHistorico, RespostaHistorico, Resultado } from '../shared/tipos.ts';
-
-mkdirSync(dirname(config.historicoDb), { recursive: true });
-const db = new DatabaseSync(config.historicoDb);
 
 // Um snapshot por geração do TSE (dg+hg); votos de cada candidato naquele instante.
 db.exec(`
-  PRAGMA journal_mode = WAL;
-  PRAGMA busy_timeout = 5000;
-  PRAGMA foreign_keys = ON;
-
   CREATE TABLE IF NOT EXISTS snapshot (
     id          INTEGER PRIMARY KEY,
     uf          TEXT    NOT NULL,
@@ -115,4 +105,3 @@ export function lerHistorico(
   };
 }
 
-export const fechar = () => db.close();
