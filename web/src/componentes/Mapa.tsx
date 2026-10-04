@@ -5,10 +5,9 @@ import { pct } from '../formato.ts';
 import { MapaBrasil } from './MapaBrasil.tsx';
 
 // Página "Mapa": totalização por estado, com alternância de cargo (Presidente/Governador/
-// Senador). GET /api/panorama?cargo= é novo (backend em implementação em paralelo); sem
-// ?cargo= o servidor antigo ainda responde com o panorama de Presidente, então o 1º turno
-// continua funcionando mesmo antes do deploy da rota nova. Se algum cargo além de Presidente
-// der 400 (rota ainda não aceita ?cargo= naquele deploy), a alternância se esconde sozinha.
+// Senador) via GET /api/panorama?cargo=. Sem ?cargo=, o servidor responde com o panorama de
+// Presidente. Se algum cargo além de Presidente der 400 (ex.: deploy antigo ainda sem a rota),
+// a alternância se esconde sozinha em vez de insistir num cargo que sempre falharia.
 
 const CARGOS_MAPA: { cargo: number; rotulo: string }[] = [
   { cargo: 1, rotulo: 'Presidente' },

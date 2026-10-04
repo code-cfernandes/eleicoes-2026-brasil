@@ -412,12 +412,13 @@ button, input, select { font: inherit; color: inherit; }
   .indicador-detalhe { font-size: .75rem; }
 }
 
-/* Grade de 2 colunas (desktop): Presidente+Mapa, depois Evolução+Novidades */
-.inicio-grade-2col { display: grid; gap: 1.25rem; }
+/* Grade de 2 colunas (desktop): Presidente+Mapa, depois Evolução+Novidades.
+   Cards da mesma linha esticam para a mesma altura, para não sobrar vão entre eles. */
+.inicio-grade-2col { display: grid; gap: 1.25rem; align-items: stretch; }
 @media (min-width: 64rem) {
-  .inicio-grade-2col { grid-template-columns: 1.1fr .9fr; align-items: start; }
+  .inicio-grade-2col { grid-template-columns: 1fr 1fr; }
 }
-.inicio-mapa-mini .mb-svg-area { max-height: 20rem; }
+.inicio-mapa-mini .mb-svg-area { max-height: 24rem; }
 .evolucao-compacta .grafico { height: 14rem; }
 .evolucao-compacta { margin-top: 0; }
 
@@ -428,10 +429,13 @@ button, input, select { font: inherit; color: inherit; }
 .inicio-contagem p { font-size: .9375rem; }
 .inicio-contagem strong { font: 700 1.1rem 'Barlow Condensed', sans-serif; font-variant-numeric: tabular-nums; }
 
+.inicio-placar { display: flex; flex-direction: column; }
 .inicio-placar .andamento-numero { margin-top: .6rem; font-size: .9375rem; }
 .inicio-placar .trilho-grande { margin-top: .4rem; }
 .inicio-placar .resumo { margin-top: .75rem; padding-top: .75rem; }
 .inicio-placar .resumo-lider { font-size: .9375rem; }
+/* Ao esticar o card até a altura do mapa, o botão desce ao rodapé do card (sem vão no meio) */
+.inicio-placar .estado-cargo-todos { margin-top: auto; }
 
 .inicio-top3 { list-style: none; padding: 0; margin-top: .9rem; display: grid; gap: .5rem; }
 .inicio-top3-item { display: flex; align-items: center; gap: .6rem; }

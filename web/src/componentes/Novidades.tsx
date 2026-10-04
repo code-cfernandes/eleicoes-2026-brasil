@@ -4,8 +4,8 @@ import { NOMES_UF } from '../../../shared/ufs.ts';
 import { horaMinuto } from '../formato.ts';
 
 // "O que está acontecendo agora": linha do tempo de eventos estatísticos da totalização
-// (GET /api/novidades). A rota é nova (backend em implementação em paralelo): se ainda não
-// existir (404), mostra um aviso discreto em vez de erro.
+// (GET /api/novidades), atualizada ao vivo pelo canal global de SSE (/api/eventos?canal=novidades).
+// Sem SSE disponível, a consulta periódica continua como garantia.
 
 type Filtro = 'todas' | 'estados' | 'marcos' | 'viradas';
 
@@ -47,7 +47,33 @@ export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas }:
       if (!ctrl.signal.aborted) timer = setTimeout(carregar, intervaloMs);
     };
     void carregar();
-    return () => { ctrl.abort(); clearTimeout(timer); };
+
+    // Ao vivo: o servidor publica cada evento novo no canal global "novidades" (SSE) assim
+    // que o grava. A tela recebe e já acrescenta, sem esperar a próxima consulta. Sem SSE
+    // (rede bloqueia, servidor lotado), a consulta periódica acima continua como garantia.
+    let fonte: EventSource | undefined;
+    const conectar = () => {
+      fonte = new EventSource('/api/eventos?canal=novidades');
+      fonte.addEventListener('novidade', (ev) => {
+        try {
+          const e = JSON.parse((ev as MessageEvent<string>).data) as EventoApuracao;
+          setEventos((atual) => {
+            const lista = atual ?? [];
+            if (lista.some((x) => x.id === e.id)) return lista;
+            return [e, ...lista].slice(0, limite ?? 30);
+          });
+          setDisponivel(true);
+        } catch { /* evento malformado: a consulta periódica reconcilia na próxima rodada */ }
+      });
+      fonte.onerror = () => {
+        // CONNECTING: o navegador reconecta sozinho. CLOSED: recusado (ex.: 503); o polling
+        // já cobre, então fechamos a assinatura em vez de insistir.
+        if (fonte?.readyState === EventSource.CLOSED && !ctrl.signal.aborted) fonte.close();
+      };
+    };
+    conectar();
+
+    return () => { ctrl.abort(); clearTimeout(timer); fonte?.close(); };
   }, [intervaloMs, limite]);
 
   if (!disponivel) {

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import type { SaudeDados } from '../../../shared/tipos.ts';
 
 // "Status dos dados": só o que é medido de fato (não inventa "Integridade OK"). Usado no
-// rodapé da sidebar (desktop) e na aba "Mais" (mobile). O backend pode ainda não ter o
-// campo `dados` (rota em implementação em paralelo): nesse caso mostra só o que tiver.
+// rodapé da sidebar (desktop) e na aba "Mais" (mobile). Se o backend ainda não tiver o
+// campo `dados` (resposta mais antiga), mostra só o que tiver.
 
 interface RespostaSaude { ok: boolean; dados?: SaudeDados }
 
