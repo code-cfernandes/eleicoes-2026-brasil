@@ -9,7 +9,7 @@ import { registrar, lerHistorico } from './historico.ts';
 import { fechar } from './banco.ts';
 import { obterFoto } from './fotos.ts';
 import { assinar, CANAL_NOVIDADES, conexoesAbertas, disputasAssistidas, encerrarTodas, notificar } from './eventos.ts';
-import { backfillIA, idMaisRecente, lerNovidades, lerNovidadesAntes, processar, pulsar, redigirComIA } from './novidades.ts';
+import { backfillIA, gerarResumoPeriodico, idMaisRecente, lerNovidades, lerNovidadesAntes, processar, pulsar, redigirComIA } from './novidades.ts';
 import {
   avaliar, chavePublica, deixarDeSeguir, deixarNovidades, disputasComInscritos, disputasSeguidas, enviar,
   estatisticasPush, inscricaoValida, renovar, seguir, segueNovidades, seguirNovidades,
@@ -379,6 +379,11 @@ const coletor = setInterval(coletarTudo, config.cacheMs);
 // recalcula as notícias antigas que ainda estão com frase-modelo.
 void backfillIA();
 setInterval(() => { void redigirComIA(); }, config.cacheMs);
+
+// Balanço periódico de Presidente/Brasil (a cada NOTICIA_INTERVALO_MIN): gera a notícia de
+// "começou às HH:MM" quando não há nenhuma ainda e, depois, o andamento com o aumento percentual.
+gerarResumoPeriodico();
+setInterval(() => { gerarResumoPeriodico(); }, config.cacheMs);
 
 const servidor = app.listen(config.port, () => console.log(`http://localhost:${config.port}`));
 

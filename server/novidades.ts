@@ -1,6 +1,6 @@
 import { db } from './banco.ts';
-import { CARGOS } from './config.ts';
-import { votosTotaisAte } from './historico.ts';
+import { config, CARGOS, envNumero } from './config.ts';
+import { resumoAtual, votosTotaisAte } from './historico.ts';
 import { enviarNovidades, nomeProprio, type Deteccao } from './notificacoes.ts';
 import { CANAL_NOVIDADES, transmitir } from './eventos.ts';
 import { iaDisponivel, intervaloIaMs, redigir } from './ia.ts';
@@ -48,6 +48,7 @@ const INTERVALO_DIF_MS = 20 * 60_000;
 const PST_MIN_DIF = 5;
 const INTERVALO_DEP_MS = 60 * 60_000;      // tempo do TSE entre agregados de deputados
 const ESPERA_MAX_DEP_MS = 10 * 60_000;     // relógio do servidor: pendente não fica parado para sempre
+const NOTICIA_INTERVALO_MS = envNumero('NOTICIA_INTERVALO_MIN', 5) * 60_000; // balanço periódico
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS novidade (
@@ -82,10 +83,12 @@ const sql = {
     WHERE id > ? ORDER BY id DESC LIMIT ?`),
   lerAntes: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto, ia FROM novidade
     WHERE id < ? ORDER BY id DESC LIMIT ?`),
-  // Presidente/Brasil ainda com frase-modelo, do mais antigo para o mais novo (fila de redação)
+  // Presidente/Brasil ainda com frase-modelo, do mais antigo para o mais novo (fila de redação).
+  // 'progresso' fica de fora: já é um balanço factual e frequente, não precisa de IA.
   pendenteIA: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto FROM novidade
-    WHERE uf = 'br' AND cargo = 1 AND ia = 0 ORDER BY id LIMIT 1`),
+    WHERE uf = 'br' AND cargo = 1 AND ia = 0 AND tipo != 'progresso' ORDER BY id LIMIT 1`),
   marcarIA: db.prepare('UPDATE novidade SET texto = ?, ia = 1 WHERE id = ?'),
+  temTipo: db.prepare('SELECT count(*) AS n FROM novidade WHERE uf = ? AND cargo = ? AND tipo = ?'),
   estado: db.prepare('SELECT valor FROM novidade_estado WHERE chave = ?'),
   salvarEstado: db.prepare(`INSERT INTO novidade_estado (chave, valor) VALUES (?, ?)
     ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor`),
@@ -102,6 +105,8 @@ const nome = (c: { nome: string }) => nomeProprio(c.nome);
 const decimal = (v: number, casas = 1) => v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: casas });
 const pct = (v: number) => `${decimal(v)}%`;
 const lista = (itens: string[]) => (itens.length <= 1 ? itens.join('') : `${itens.slice(0, -1).join(', ')} e ${itens.at(-1)}`);
+const HORA_BR = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+const horaMinuto = (ms: number) => HORA_BR.format(ms);
 
 // 1.234.567 -> "1,2 milhão de votos"; 2.400.000 -> "2,4 milhões de votos"; 850.000 -> "850 mil votos"
 export function quantidadeVotos(n: number): string {
@@ -168,7 +173,7 @@ export function processar(d: Resultado, deteccoes: Deteccao[]) {
     if (det.tipo === 'marco' && cargo === 1) {
       if (brasilPresidente) {
         novos.push(det.marco === 0
-          ? { ...base, chave: 'inicio:br:1', tipo: 'inicio', texto: 'A totalização para Presidente começou.' }
+          ? { ...base, chave: 'inicio:br:1', tipo: 'inicio', texto: `A totalização para Presidente começou às ${horaMinuto(instante)}.` }
           : { ...base, chave: `marco:br:1:${det.marco}`, tipo: 'marco', texto: det.marco === 100
             ? 'Brasil concluiu a totalização para Presidente (100% das seções).'
             : `Brasil passou de ${det.marco}% das seções totalizadas para Presidente.` });
@@ -367,4 +372,41 @@ export async function redigirComIA() {
   } finally {
     processandoIA = false;
   }
+}
+
+// --- Balanço periódico de Presidente/Brasil: uma notícia a cada NOTICIA_INTERVALO_MIN
+// capturando o andamento (% de seções, líder e o aumento percentual desde o último balanço).
+// A primeira notícia (quando ainda não há "inicio") é o começo da totalização, com a hora.
+let ultimaGeracaoPeriodica = 0;
+
+export function gerarResumoPeriodico() {
+  if (Date.now() - ultimaGeracaoPeriodica < NOTICIA_INTERVALO_MS) return;
+  ultimaGeracaoPeriodica = Date.now();
+
+  const r = resumoAtual('br', 1);
+  if (!r || r.pst <= 0) return; // a totalização ainda não começou
+
+  // Primeira notícia: o início, com a hora oficial (config) ou a do primeiro dado
+  if (!(sql.temTipo.get('br', 1, 'inicio') as { n: number }).n) {
+    const inicio = config.inicioApuracao ?? r.instante;
+    publicar([gravar({
+      chave: 'inicio:br:1', instante: inicio, tipo: 'inicio', uf: 'br', cargo: 1,
+      texto: `A totalização para Presidente começou às ${horaMinuto(inicio)}.`,
+    })]);
+    return;
+  }
+
+  // Balanço periódico: só quando o TSE publicou algo novo desde o último balanço
+  const base = lerEstado<{ pst: number; instante: number }>('progresso:br:1');
+  if (base && r.instante <= base.instante) return;
+  const aumento = base ? r.pst - base.pst : 0;
+  const lider = r.top[0];
+  const trechos = [`Brasil: ${decimal(r.pst)}% das seções totalizadas`];
+  if (base) trechos.push(aumento > 0 ? `+${decimal(aumento)} p.p. desde o último balanço` : 'sem mudança no percentual');
+  if (lider) trechos.push(`${nome(lider)} lidera com ${decimal(lider.percentual)}%`);
+  salvarEstado('progresso:br:1', { pst: r.pst, instante: r.instante });
+  publicar([gravar({
+    chave: `progresso:br:1:${r.instante}`, instante: r.instante, tipo: 'progresso', uf: 'br', cargo: 1,
+    texto: `${trechos.join(', ')}.`,
+  })]);
 }

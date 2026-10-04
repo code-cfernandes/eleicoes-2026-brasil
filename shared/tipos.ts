@@ -128,7 +128,8 @@ export type TipoEvento =
   | 'virada'            // mudou quem lidera (ou quem está nas vagas, no Senado)
   | 'definido'          // TSE marcou eleito ou 2º turno
   | 'ritmo'             // volume de votos totalizados num intervalo (ex.: +1,2 mi em 5 min)
-  | 'diferenca';        // diferença entre 1º e 2º mudou de forma relevante
+  | 'diferenca'         // diferença entre 1º e 2º mudou de forma relevante
+  | 'progresso';        // balanço periódico do andamento (a cada poucos minutos)
 
 export interface EventoApuracao {
   id: number;

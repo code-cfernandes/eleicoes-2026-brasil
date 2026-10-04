@@ -64,6 +64,25 @@ const totaisAte = db.prepare(`
 export const votosTotaisAte = (uf: string, cargo: number, ate: number) =>
   totaisAte.get(uf, cargo, ate) as { instante: number; votos: number } | undefined;
 
+// Resumo do estado atual de uma disputa (base dos balanços periódicos em novidades.ts)
+export interface ResumoAtual {
+  instante: number;
+  pst: number;
+  votosTotais: number | null;
+  top: { numero: string; nome: string; votos: number; percentual: number }[];
+}
+const snapshotResumo = db.prepare('SELECT instante, pst, votos_totais AS votosTotais FROM snapshot WHERE id = ?');
+const votosTop = db.prepare('SELECT numero, nome, votos, percentual FROM voto WHERE snapshot_id = ? ORDER BY votos DESC LIMIT 2');
+
+export function resumoAtual(uf: string, cargo: number): ResumoAtual | null {
+  const ultimo = maisRecente.get(uf, cargo) as { id: number } | undefined;
+  if (!ultimo) return null;
+  const s = snapshotResumo.get(ultimo.id) as { instante: number; pst: number; votosTotais: number | null } | undefined;
+  if (!s) return null;
+  const top = votosTop.all(ultimo.id) as ResumoAtual['top'];
+  return { ...s, top };
+}
+
 // Hora "cheia" de Brasília (UTC-3, sem horário de verão) de cada snapshot.
 const HORA = '((instante / 1000 - 10800) / 3600)';
 
