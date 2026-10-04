@@ -17,7 +17,7 @@ function BlocoCargo({ c, uf, onAbrirDisputa }: { c: ResumoCargo; uf: string; onA
     <div className="estado-cargo">
       <div className="estado-cargo-cabecalho">
         <h3>{c.nome}</h3>
-        <span className="estado-cargo-pst">{c.pst === null ? 'sem dados' : `${pct(c.pst)} apurado`}</span>
+        <span className="estado-cargo-pst">{c.pst === null ? 'sem dados' : `${pct(c.pst)} totalizado`}</span>
       </div>
 
       {c.proporcional && (
@@ -28,7 +28,7 @@ function BlocoCargo({ c, uf, onAbrirDisputa }: { c: ResumoCargo; uf: string; onA
 
       {!apuracaoComecou ? (
         <p className="estado-cargo-vazio">
-          {c.total > 0 ? `Aguardando apuração. ${c.total} candidatos.` : 'Sem dados do TSE no momento para esta disputa.'}
+          {c.total > 0 ? `Aguardando totalização. ${c.total} candidatos.` : 'Sem dados do TSE no momento para esta disputa.'}
         </p>
       ) : (
         <ol className="estado-cargo-lista">

@@ -50,6 +50,31 @@
 > [!NOTE]
 > Projeto independente, **sem vínculo com o TSE**. Os dados vêm dos arquivos públicos de resultados em `resultados.tse.jus.br`. Em caso de divergência, vale o resultado oficial do TSE.
 
+## Telas
+
+<details>
+<summary>Ver as telas (início, cargos, estados)</summary>
+
+| Início | Presidente |
+|---|---|
+| ![Início: placar nacional, seu estado e andamento pelo país](docs/tela-inicio.png) | ![Presidente](docs/tela-presidente.png) |
+
+| Governador | Senador |
+|---|---|
+| ![Governador](docs/tela-governador.png) | ![Senador](docs/tela-senador.png) |
+
+| Deputado federal | Deputado estadual | Deputado distrital |
+|---|---|---|
+| ![Deputado federal](docs/tela-deputado-federal.png) | ![Deputado estadual](docs/tela-deputado-estadual.png) | ![Deputado distrital](docs/tela-deputado-distrital.png) |
+
+| Apuração por estado | Visão de um estado |
+|---|---|
+| ![Apuração por estado](docs/tela-estado-apuracao.png) | ![Visão de um estado](docs/tela-estado-detalhe.png) |
+
+</details>
+
+Próximos passos: veja a [proposta de redesign](docs/proposta-redesign.md) (central de acompanhamento com tema escuro, mapa, linha do tempo e navegação inferior no celular).
+
 ## Rodando em 1 minuto
 
 Com Docker:
@@ -156,6 +181,7 @@ Se este projeto foi útil, **deixe uma ⭐ no repositório** e compartilhe com q
 ## Créditos
 
 - Resultados, fotos das candidaturas e configurações das eleições: arquivos públicos do [Tribunal Superior Eleitoral](https://resultados.tse.jus.br).
+- Mapa do Brasil: malha territorial por UF do [IBGE](https://servicodados.ibge.gov.br/api/docs/malhas?versao=3) (dados abertos, © IBGE), simplificada para uso na web.
 - Bandeiras dos estados: [Wikimedia Commons](https://commons.wikimedia.org), todas em domínio público (símbolos oficiais), convertidas para PNG em tamanho reduzido.
 
 ## Licença

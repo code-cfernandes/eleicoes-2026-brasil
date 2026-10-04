@@ -97,8 +97,8 @@ export function Avisos({ uf, cargo, chave, proporcional }: { uf: string; cargo: 
   const ativo = estado === 'ativado';
   // Deputados não têm "virada": a eleição é por quociente partidário
   const quando = proporcional
-    ? 'no início, a cada 25% apurado e quando os eleitos forem definidos'
-    : 'no início, a cada 25% apurado, em viradas e quando o resultado sair';
+    ? 'no início, a cada 25% totalizado e quando os eleitos forem definidos'
+    : 'no início, a cada 25% totalizado, em viradas e quando o resultado sair';
   return (
     <div className="avisos">
       <button type="button" className="avisos-botao" aria-pressed={ativo} disabled={estado === 'ativando'} onClick={() => void alternar()}>

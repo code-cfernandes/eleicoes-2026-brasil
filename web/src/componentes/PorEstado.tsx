@@ -20,7 +20,7 @@ function Linha({ e, onAbrir }: { e: EstadoPanorama; onAbrir: (uf: string) => voi
   const concluido = e.pst !== null && e.pst >= 100;
   const descricao = e.pst === null
     ? `${nome(e.uf)}: sem dados do TSE no momento. Ver todas as disputas deste estado`
-    : `${nome(e.uf)}: ${pct(e.pst)} apurado${e.lider ? `, ${e.lider.nome} lidera a disputa de Presidente com ${pct(e.lider.percentual)}` : ''}. Ver todas as disputas deste estado`;
+    : `${nome(e.uf)}: ${pct(e.pst)} totalizado${e.lider ? `, ${e.lider.nome} lidera a disputa de Presidente com ${pct(e.lider.percentual)}` : ''}. Ver todas as disputas deste estado`;
   return (
     <li>
       <button type="button" className={`estado${concluido ? ' estado-concluido' : ''}`} aria-label={descricao} onClick={() => onAbrir(e.uf)}>
@@ -45,7 +45,7 @@ function Linha({ e, onAbrir }: { e: EstadoPanorama; onAbrir: (uf: string) => voi
               </span>
             </>
           ) : (
-            <span className="estado-aguardando">{e.pst === null ? '' : 'Aguardando apuração'}</span>
+            <span className="estado-aguardando">{e.pst === null ? '' : 'Aguardando totalização'}</span>
           )}
         </span>
         <span className="estado-ver" aria-hidden="true">Ver estado</span>
@@ -57,7 +57,7 @@ function Linha({ e, onAbrir }: { e: EstadoPanorama; onAbrir: (uf: string) => voi
 function LinhaExterior({ e, onAbrir }: { e: EstadoPanorama; onAbrir: (uf: string) => void }) {
   const descricao = e.pst === null
     ? 'Exterior: sem dados do TSE no momento. Abrir Presidente no exterior'
-    : `Exterior: ${pct(e.pst)} apurado${e.lider ? `, ${e.lider.nome} lidera com ${pct(e.lider.percentual)}` : ''}. Abrir Presidente no exterior`;
+    : `Exterior: ${pct(e.pst)} totalizado${e.lider ? `, ${e.lider.nome} lidera com ${pct(e.lider.percentual)}` : ''}. Abrir Presidente no exterior`;
   return (
     <button type="button" className="estado estado-exterior" aria-label={descricao} onClick={() => onAbrir(e.uf)}>
       <span className="estado-nome">
@@ -84,7 +84,7 @@ function LinhaExterior({ e, onAbrir }: { e: EstadoPanorama; onAbrir: (uf: string
             </span>
           </>
         ) : (
-          <span className="estado-aguardando">{e.pst === null ? '' : 'Aguardando apuração'}</span>
+          <span className="estado-aguardando">{e.pst === null ? '' : 'Aguardando totalização'}</span>
         )}
       </span>
       <span className="estado-ver" aria-hidden="true">Ver Presidente</span>
@@ -139,7 +139,7 @@ export function PorEstado({ intervaloMs, onAbrir }: { intervaloMs: number; onAbr
 
   return (
     <section className="por-estado" aria-labelledby="por-estado-titulo">
-      <h2 id="por-estado-titulo">Apuração por estado</h2>
+      <h2 id="por-estado-titulo">Totalização por estado</h2>
       <p className="andamento-numero">
         <strong>{pstBrasil === null ? '–' : pct(pstBrasil)}</strong> das seções totalizadas no Brasil
       </p>
@@ -151,13 +151,13 @@ export function PorEstado({ intervaloMs, onAbrir }: { intervaloMs: number; onAbr
         {!dados
           ? erro ? `Não foi possível carregar os estados (${erro}). Nova tentativa em ${intervaloMs / 1000}s.` : 'Carregando os estados…'
           : !comecaram.length
-            ? 'A apuração ainda não começou. A partir das 17h (horário de Brasília), cada estado aparece aqui conforme o TSE totaliza as seções.'
+            ? 'A totalização ainda não começou. A partir das 17h (horário de Brasília), cada estado aparece aqui conforme o TSE totaliza as seções.'
             : <>
                 {concluidos.length === ufs.length
-                  ? 'Todos os estados concluíram a apuração.'
+                  ? 'Todos os estados concluíram a totalização.'
                   : concluidos.length === 0
-                    ? 'Nenhum estado concluiu a apuração ainda.'
-                    : `${concluidos.length} de ${ufs.length} estados ${concluidos.length === 1 ? 'concluiu' : 'concluíram'} a apuração.`}
+                    ? 'Nenhum estado concluiu a totalização ainda.'
+                    : `${concluidos.length} de ${ufs.length} estados ${concluidos.length === 1 ? 'concluiu' : 'concluíram'} a totalização.`}
                 {maisAtrasado && ` O mais atrasado é ${nome(maisAtrasado.uf)}, com ${pct(maisAtrasado.pst!)}.`}
               </>}
         {verificadoEm && <span className="resumo-estados-hora"> Verificado às {horaDoAparelho(verificadoEm)}.</span>}
@@ -166,7 +166,7 @@ export function PorEstado({ intervaloMs, onAbrir }: { intervaloMs: number; onAbr
       <div className="estados-controles">
         <p>Líder para Presidente em cada estado. Toque num estado para abrir a disputa de Presidente nele.</p>
         <div className="alternar" role="group" aria-label="Ordenar estados">
-          <button type="button" aria-pressed={ordem === 'andamento'} onClick={() => setOrdem('andamento')}>Mais apurados</button>
+          <button type="button" aria-pressed={ordem === 'andamento'} onClick={() => setOrdem('andamento')}>Mais totalizados</button>
           <button type="button" aria-pressed={ordem === 'nome'} onClick={() => setOrdem('nome')}>A–Z</button>
           <button type="button" aria-pressed={ordem === 'regiao'} onClick={() => setOrdem('regiao')}>Por região</button>
         </div>

@@ -20,6 +20,10 @@ interface Props {
   tema: Tema;
   /** Presidente/Governador: mostra a referência de 50% dos votos válidos (maioria no 1º turno) */
   referencia50?: boolean;
+  /** Versão reduzida para caber lado a lado com outro bloco (Início, desktop): gráfico mais
+   * baixo e sem a alternância hora-a-hora/cada atualização (quem quiser o gráfico completo
+   * abre a disputa). */
+  compacto?: boolean;
 }
 
 type Linha = { rotulo: string; instante: number; pst: number } & Record<string, number | string>;
@@ -59,7 +63,7 @@ function Dica({ active, payload, series, ativo }: {
   );
 }
 
-export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFixar, tema, referencia50 }: Props) {
+export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFixar, tema, referencia50, compacto }: Props) {
   const { linhas, series } = useMemo(() => {
     const variosDias = new Set(historico.map((p) => diaMes(p.instante))).size > 1;
     const linhas: Linha[] = historico.map((p) => {
@@ -83,23 +87,25 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
   const contexto = series.length - coloridas.length;
 
   return (
-    <section className="evolucao" aria-labelledby="evolucao-titulo">
+    <section className={`evolucao${compacto ? ' evolucao-compacta' : ''}`} aria-labelledby="evolucao-titulo">
       <header className="evolucao-cabecalho">
         <div>
-          <h2 id="evolucao-titulo">Evolução da apuração</h2>
+          <h2 id="evolucao-titulo">Evolução da totalização</h2>
           <p>Percentual de votos válidos de cada candidato {por === 'hora' ? 'ao fim de cada hora' : 'a cada atualização do TSE'}.</p>
         </div>
-        <div className="alternar" role="group" aria-label="Frequência dos pontos">
-          <button type="button" aria-pressed={por === 'hora'} onClick={() => onPor('hora')}>Hora a hora</button>
-          <button type="button" aria-pressed={por === 'todos'} onClick={() => onPor('todos')}>Cada atualização</button>
-        </div>
+        {!compacto && (
+          <div className="alternar" role="group" aria-label="Frequência dos pontos">
+            <button type="button" aria-pressed={por === 'hora'} onClick={() => onPor('hora')}>Hora a hora</button>
+            <button type="button" aria-pressed={por === 'todos'} onClick={() => onPor('todos')}>Cada atualização</button>
+          </div>
+        )}
       </header>
 
       {!historico.length ? (
         <p className="vazio">O gráfico aparece quando o TSE divulgar as primeiras seções totalizadas desta disputa.</p>
       ) : (
         <>
-          <div className="grafico" role="img" aria-label="Gráfico de linhas: percentual de cada candidato ao longo da apuração. Os mesmos dados estão na tabela abaixo.">
+          <div className="grafico" role="img" aria-label="Gráfico de linhas: percentual de cada candidato ao longo da totalização. Os mesmos dados estão na tabela abaixo.">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={linhas} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
                 <CartesianGrid vertical={false} stroke={n.grade} />
@@ -160,7 +166,7 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
             )}
           </ul>
 
-          <details className="tabela">
+          <details className="tabela" hidden={compacto}>
             <summary>Ver os números em tabela</summary>
             <div className="tabela-rolagem">
               <table>

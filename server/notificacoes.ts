@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { db } from './banco.ts';
 import { config, CARGOS, env, envNumero } from './config.ts';
 import { NOMES_UF } from '../shared/ufs.ts';
-import type { Resultado } from '../shared/tipos.ts';
+import type { Candidato, Resultado } from '../shared/tipos.ts';
 
 // Web Push: o aparelho inscreve-se em disputas e recebe avisos dos momentos que importam
 // (início, marcos de apuração, troca na liderança, resultado definido), não de cada
@@ -148,17 +148,27 @@ export const disputasComInscritos = (): [string, number][] =>
 // --- Detecção: compara o resultado novo com o que já foi avisado
 interface Estado { marco: number; lideres: string; definido: number; ultima_virada: number }
 export interface Aviso { titulo: string; corpo: string; url: string; tag: string; urgente: boolean }
+// O que a detecção encontrou, granular (a linha do tempo de novidades.ts filtra e redige à parte).
+// O push continua juntando tudo num aviso só, exatamente como antes.
+export type Deteccao =
+  | { tipo: 'marco'; marco: number } // 0 = começou
+  | { tipo: 'virada'; entrou: Candidato }
+  | { tipo: 'definido'; eleitos: Candidato[]; segundoTurno: Candidato[] };
 
 const pctBR = (v: number) => `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
-const nomeProprio = (s: string) => s.toLowerCase().replace(/(^|\s)(\p{L})/gu, (_m, esp: string, l: string) => esp + l.toUpperCase());
+// "ANDRE DO PRADO" -> "Andre do Prado": iniciais maiúsculas, partículas (da, de, do, dos, das, e) minúsculas
+export const nomeProprio = (s: string) => s.toLowerCase()
+  .replace(/(^|\s)(\p{L})/gu, (_m, esp: string, l: string) => esp + l.toUpperCase())
+  .replace(/(?<=\s)(Da|De|Do|Das|Dos|E)(?=\s)/g, (p) => p.toLowerCase());
 
-export function avaliar(d: Resultado): Aviso | null {
+export function avaliar(d: Resultado): { aviso: Aviso | null; deteccoes: Deteccao[] } {
   const { uf, cargo } = d;
   const cfg = CARGOS[cargo]!;
   const antes = (sql.estado.get(uf, cargo) as Estado | undefined) ?? { marco: -1, lideres: '', definido: 0, ultima_virada: 0 };
   const est = { ...antes };
   const cand = d.candidatos;
   const linhas: string[] = [];
+  const deteccoes: Deteccao[] = [];
   let urgente = false;
 
   // Resultado definido: TSE marcou eleitos ou 2º turno
@@ -167,6 +177,7 @@ export function avaliar(d: Resultado): Aviso | null {
   if (!est.definido && (eleitos.length || segundo.length)) {
     est.definido = 1;
     urgente = true;
+    deteccoes.push({ tipo: 'definido', eleitos, segundoTurno: segundo });
     if (segundo.length >= 2) linhas.push(`Vai ter 2º turno: ${segundo.map((c) => nomeProprio(c.nome)).join(' e ')}.`);
     else if (cfg.proporcional) linhas.push(`${eleitos.length} eleitos já definidos.`);
     else linhas.push(`${eleitos.map((c) => nomeProprio(c.nome)).join(' e ')} ${eleitos.length > 1 ? 'eleitos' : 'eleito'}.`);
@@ -182,6 +193,7 @@ export function avaliar(d: Resultado): Aviso | null {
       const anteriores = new Set(est.lideres.split(','));
       const entrou = topo.find((c) => !anteriores.has(c.numero));
       if (entrou) {
+        deteccoes.push({ tipo: 'virada', entrou });
         linhas.push(d.vagas === 1
           ? `Virada: ${nomeProprio(entrou.nome)} passou à frente.`
           : `${nomeProprio(entrou.nome)} entrou entre os ${d.vagas} primeiros.`);
@@ -191,29 +203,31 @@ export function avaliar(d: Resultado): Aviso | null {
     }
   }
 
-  // Marco de apuração: só o maior atingido (um salto de 20% para 55% avisa só os 50%)
+  // Marco da totalização: só o maior atingido (um salto de 20% para 55% avisa só os 50%)
   const marco = Math.max(-1, ...MARCOS.filter((m) => (m === 0 ? d.secoesTotalizadas > 0 : d.secoesTotalizadas >= m)));
   if (marco > est.marco) {
     est.marco = marco;
+    deteccoes.push({ tipo: 'marco', marco });
     if (!linhas.length) {
-      linhas.push(marco === 0 ? 'A apuração começou.' : marco === 100 ? 'Apuração concluída.' : `${marco}% das seções apuradas.`);
+      linhas.push(marco === 0 ? 'A totalização começou.' : marco === 100 ? 'Totalização concluída.' : `${marco}% das seções totalizadas.`);
     }
   }
 
   if (JSON.stringify(est) !== JSON.stringify(antes)) {
     sql.salvarEstado.run(uf, cargo, est.marco, est.lideres, est.definido, est.ultima_virada);
   }
-  if (!linhas.length) return null;
+  if (!linhas.length) return { aviso: null, deteccoes };
 
   const placar = cand.slice(0, 3).filter((c) => c.votos > 0)
     .map((c) => `${nomeProprio(c.nome)} ${pctBR(c.percentual)}`).join(', ');
-  return {
+  const aviso: Aviso = {
     titulo: `${cfg.nome}, ${NOMES_UF[uf] ?? uf.toUpperCase()}`,
-    corpo: [...linhas, placar && `${placar} (${pctBR(d.secoesTotalizadas)} apurado)`].filter(Boolean).join('\n'),
+    corpo: [...linhas, placar && `${placar} (${pctBR(d.secoesTotalizadas)} totalizado)`].filter(Boolean).join('\n'),
     url: `/?cargo=${cargo}&uf=${uf}`,
     tag: `apuracao-${uf}-${cargo}`, // no aparelho, o aviso novo da disputa substitui o anterior
     urgente,
   };
+  return { aviso, deteccoes };
 }
 
 // --- Envio: fila com concorrência limitada; inscrições mortas (404/410) são apagadas

@@ -10,7 +10,8 @@ async function json<T>(url: string, signal?: AbortSignal): Promise<T> {
 
 export const buscarConfig = () => json<ConfigPublica>('/api/config');
 
-export const buscarPanorama = (signal?: AbortSignal) => json<Panorama>('/api/panorama', signal);
+export const buscarPanorama = (signal?: AbortSignal, cargo?: number) =>
+  json<Panorama>(`/api/panorama${cargo ? `?cargo=${cargo}` : ''}`, signal);
 
 export const buscarEstado = (uf: string, signal?: AbortSignal) => json<VisaoEstado>(`/api/estado?uf=${uf}`, signal);
 

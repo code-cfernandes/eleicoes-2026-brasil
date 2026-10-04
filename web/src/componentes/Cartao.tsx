@@ -62,7 +62,7 @@ export function Cartao({ c, cor, noGrafico, ativo, esmaecido, destaque, apuracao
         <Situacao c={c} />
       </span>
       <span className="cartao-rodape">
-        <span>{semVotos ? 'Aguardando apuração' : votos(c.votos)}</span>
+        <span>{semVotos ? 'Aguardando totalização' : votos(c.votos)}</span>
       </span>
       <span className="trilho" aria-hidden="true">
         <span style={{ width: `${semVotos ? 0 : c.percentual}%`, background: cor }} />

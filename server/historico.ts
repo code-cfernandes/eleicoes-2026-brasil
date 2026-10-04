@@ -25,9 +25,16 @@ db.exec(`
   ) WITHOUT ROWID;
 `);
 
+// Migração aditiva e idempotente (o banco de produção já existe): colunas novas são NULLABLE,
+// snapshots antigos ficam com NULL. votos_totais (v.tv do TSE) alimenta o evento "ritmo".
+const colunasSnapshot = new Set((db.prepare('PRAGMA table_info(snapshot)').all() as { name: string }[]).map((c) => c.name));
+for (const [coluna, tipo] of [['votos_totais', 'INTEGER'], ['validos', 'INTEGER']] as const) {
+  if (!colunasSnapshot.has(coluna)) db.exec(`ALTER TABLE snapshot ADD COLUMN ${coluna} ${tipo}`);
+}
+
 const inserirSnapshot = db.prepare(`
-  INSERT OR IGNORE INTO snapshot (uf, cargo, tse_em, instante, coletado_em, pst)
-  VALUES (?, ?, ?, ?, ?, ?)`);
+  INSERT OR IGNORE INTO snapshot (uf, cargo, tse_em, instante, coletado_em, pst, votos_totais, validos)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
 const inserirVoto = db.prepare(
   'INSERT INTO voto (snapshot_id, numero, nome, votos, percentual) VALUES (?, ?, ?, ?, ?)');
 
@@ -36,7 +43,8 @@ export function registrar(uf: string, cargo: number, d: Resultado): boolean {
   if (!d.instante) return false;
   db.exec('BEGIN');
   try {
-    const r = inserirSnapshot.run(uf, cargo, d.atualizadoEm, d.instante, Date.now(), d.secoesTotalizadas);
+    const r = inserirSnapshot.run(uf, cargo, d.atualizadoEm, d.instante, Date.now(), d.secoesTotalizadas,
+      d.totais?.votosTotais ?? null, d.totais?.validos ?? null);
     if (r.changes) {
       for (const c of d.candidatos) inserirVoto.run(r.lastInsertRowid, c.numero, c.nome, c.votos, c.percentual);
     }
@@ -47,6 +55,14 @@ export function registrar(uf: string, cargo: number, d: Resultado): boolean {
     throw err;
   }
 }
+
+// Votos totais do snapshot mais recente com instante <= `ate` (base do evento "ritmo")
+const totaisAte = db.prepare(`
+  SELECT instante, votos_totais AS votos FROM snapshot
+  WHERE uf = ? AND cargo = ? AND instante <= ? AND votos_totais IS NOT NULL
+  ORDER BY instante DESC LIMIT 1`);
+export const votosTotaisAte = (uf: string, cargo: number, ate: number) =>
+  totaisAte.get(uf, cargo, ate) as { instante: number; votos: number } | undefined;
 
 // Hora "cheia" de Brasília (UTC-3, sem horário de verão) de cada snapshot.
 const HORA = '((instante / 1000 - 10800) / 3600)';

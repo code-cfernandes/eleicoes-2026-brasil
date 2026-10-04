@@ -1,5 +1,5 @@
 import { config, CARGOS } from './config.ts';
-import type { Candidato, Resultado } from '../shared/tipos.ts';
+import type { Candidato, Resultado, SaudeDados, Totais } from '../shared/tipos.ts';
 
 const pad = (n: string | number, len: number) => String(n).padStart(len, '0');
 
@@ -37,7 +37,9 @@ function instanteTSE(dg?: string, hg?: string): number | null {
 interface CandTSE { n: string; sqcand?: string; nm?: string; nmu?: string; vap?: string; pvap?: string; e?: string; st?: string }
 interface JsonTSE {
   dg?: string; hg?: string;
-  s?: { pst?: string };
+  s?: { pst?: string; ts?: string; st?: string };
+  e?: { te?: string; c?: string; a?: string };
+  v?: { tv?: string; vv?: string; vb?: string; tvn?: string };
   carg?: { nv?: string; agr?: { par?: { sg?: string; cand?: CandTSE[] }[] }[] }[];
 }
 
@@ -60,18 +62,66 @@ export function normalizar(json: JsonTSE, uf: string, cargo: number): Omit<Resul
     })))
     .sort((a, b) => b.votos - a.votos || a.nome.localeCompare(b.nome, 'pt-BR'));
 
+  const totais: Totais = {
+    secoes: num(json.s?.ts),
+    secoesTotalizadas: num(json.s?.st),
+    eleitores: num(json.e?.te),
+    comparecimento: num(json.e?.c),
+    abstencao: num(json.e?.a),
+    votosTotais: num(json.v?.tv),
+    validos: num(json.v?.vv),
+    brancos: num(json.v?.vb),
+    nulos: num(json.v?.tvn),
+  };
+
   return {
     atualizadoEm: [json.dg, json.hg].filter(Boolean).join(' '),
     instante: instanteTSE(json.dg, json.hg),
     secoesTotalizadas: num(json.s?.pst),
     vagas: num(carg?.nv) || 1,
     candidatos,
+    totais,
+  };
+}
+
+// --- Saúde da coleta: medida aqui, no único ponto que fala com o TSE (rota /api/saude)
+const JANELA_FALHAS_MS = 10 * 60_000;
+const PESO_LATENCIA = 0.2; // média móvel exponencial: a última resposta pesa 20%
+const saude = { ultimaRespostaOk: null as number | null, ultimaFalha: null as number | null, latenciaMediaMs: null as number | null };
+const falhas: number[] = []; // instantes das falhas recentes (só os últimos 10 min)
+
+function podarFalhas(agora: number) {
+  while (falhas.length && falhas[0]! < agora - JANELA_FALHAS_MS) falhas.shift();
+}
+
+export function saudeTSE(): SaudeDados['tse'] {
+  podarFalhas(Date.now());
+  return {
+    ...saude,
+    latenciaMediaMs: saude.latenciaMediaMs === null ? null : Math.round(saude.latenciaMediaMs),
+    falhasRecentes: falhas.length,
   };
 }
 
 export async function buscarResultado(uf: string, cargo: number): Promise<Resultado> {
-  const res = await fetch(urlResultado(uf, cargo), { signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`TSE respondeu ${res.status}`);
-  const d = normalizar((await res.json()) as JsonTSE, uf, cargo);
+  const url = urlResultado(uf, cargo); // erro de configuração não conta como falha do TSE
+  const inicio = Date.now();
+  let json: JsonTSE;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) throw new Error(`TSE respondeu ${res.status}`);
+    json = (await res.json()) as JsonTSE;
+  } catch (err) {
+    const agora = Date.now();
+    saude.ultimaFalha = agora;
+    falhas.push(agora);
+    podarFalhas(agora);
+    throw err;
+  }
+  const agora = Date.now();
+  const ms = agora - inicio;
+  saude.ultimaRespostaOk = agora;
+  saude.latenciaMediaMs = saude.latenciaMediaMs === null ? ms : saude.latenciaMediaMs + PESO_LATENCIA * (ms - saude.latenciaMediaMs);
+  const d = normalizar(json, uf, cargo);
   return { cargo, nomeCargo: CARGOS[cargo]!.nome, uf, ...d };
 }

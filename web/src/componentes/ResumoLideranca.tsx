@@ -29,7 +29,7 @@ export function ResumoLideranca({ candidatos, vagas, proporcional }: Props) {
           ? <span className="resumo-tag resumo-tag-eleito">Resultado definido</span>
           : candidatos.some((c) => /2º turno/i.test(c.situacao || ''))
             ? <span className="resumo-tag resumo-tag-segundo-turno">Vai para o 2º turno</span>
-            : <span className="resumo-tag resumo-tag-andamento">Em apuração</span>}
+            : <span className="resumo-tag resumo-tag-andamento">Em totalização</span>}
       </p>
       {proporcional ? (
         // Eleição proporcional: não existe "disputa" entre o 1º e o 2º da lista

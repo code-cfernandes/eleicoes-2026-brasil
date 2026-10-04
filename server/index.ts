@@ -4,16 +4,17 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { config, CARGOS } from './config.ts';
-import { buscarResultado } from './tse.ts';
+import { buscarResultado, saudeTSE } from './tse.ts';
 import { registrar, lerHistorico } from './historico.ts';
 import { fechar } from './banco.ts';
 import { obterFoto } from './fotos.ts';
-import { assinar, conexoesAbertas, disputasAssistidas, encerrarTodas, notificar } from './eventos.ts';
+import { assinar, CANAL_NOVIDADES, conexoesAbertas, disputasAssistidas, encerrarTodas, notificar } from './eventos.ts';
+import { idMaisRecente, lerNovidades, processar, pulsar } from './novidades.ts';
 import {
   avaliar, chavePublica, deixarDeSeguir, disputasComInscritos, disputasSeguidas, enviar,
   estatisticasPush, inscricaoValida, renovar, seguir,
 } from './notificacoes.ts';
-import type { ConfigPublica, EstadoPanorama, Panorama, Resultado, ResumoCargo, VisaoEstado } from '../shared/tipos.ts';
+import type { ConfigPublica, EstadoPanorama, Panorama, Resultado, ResumoCargo, SaudeDados, VisaoEstado } from '../shared/tipos.ts';
 
 const app = express();
 app.use(compression()); // JSON de deputados cai de ~250 kB para ~35 kB
@@ -32,10 +33,15 @@ function obter(uf: string, cargo: number): Promise<Resultado> {
     try { registrar(uf, cargo, d); } catch (e) { console.error(`[histórico ${chave}]`, (e as Error).message); }
     if (versoes.has(chave) && versoes.get(chave) !== d.instante) notificar(chave, { instante: d.instante, pst: d.secoesTotalizadas });
     versoes.set(chave, d.instante);
+    let deteccoes: ReturnType<typeof avaliar>['deteccoes'] = [];
     try {
-      const aviso = avaliar(d);
+      const r = avaliar(d);
+      deteccoes = r.deteccoes;
+      const aviso = r.aviso;
       if (aviso) console.log(`[aviso ${chave}] ${aviso.corpo.split('\n')[0]} -> ${enviar(uf, cargo, aviso)} aparelho(s)`);
     } catch (e) { console.error(`[aviso ${chave}]`, (e as Error).message); }
+    // Linha do tempo: separada do push (uma falha aqui não afeta os avisos)
+    try { processar(d, deteccoes); } catch (e) { console.error(`[novidades ${chave}]`, (e as Error).message); }
     return d;
   }).catch((err: unknown) => {
     cache.delete(chave); // não guarda erro em cache
@@ -90,25 +96,33 @@ app.get('/api/resultado', async (req: Request, res: Response) => {
   }
 });
 
-// ?por=hora (padrão): último snapshot de cada hora · ?por=todos: cada geração do TSE
-// ?desde=<instante>: só o que veio depois do último ponto que o cliente já tem
-// Aba "Por estado": % apurado e líder de Presidente em cada UF (+ exterior).
+// Mapa/lista "Por estado": % totalizado e líder de cada UF para o cargo pedido
+// (?cargo=1 Presidente, padrão, com exterior; 3 Governador; 5 Senador). `brasil` vem sempre de br:1.
 // Lê pelo mesmo cache/dedupe de obter(): mil pessoas na aba = 28 consultas ao TSE a cada 30s.
-// O corpo só é refeito quando alguma UF muda de versão; sem mudança, o navegador recebe 304.
-const UFS_PANORAMA = CARGOS[1]!.ufs.filter((u) => u !== 'br');
-let panoramaPronto: { chave: string; etag: string; json: Buffer; gzip: Buffer } | undefined;
+// O corpo de cada cargo só é refeito quando alguma UF muda de versão; sem mudança, 304.
+const CARGOS_PANORAMA = [1, 3, 5];
+const ufsPanorama = (cargo: number) => CARGOS[cargo]!.ufs.filter((u) => u !== 'br' && (cargo === 1 || u !== 'zz'));
+const panoramasProntos = new Map<number, { chave: string; etag: string; json: Buffer; gzip: Buffer }>();
 
 app.get('/api/panorama', async (req: Request, res: Response) => {
-  const pares = await Promise.allSettled(['br', ...UFS_PANORAMA].map((uf) => obter(uf, 1)));
+  const cargo = Number(req.query.cargo ?? 1);
+  if (!CARGOS_PANORAMA.includes(cargo) || !config.eleicao[CARGOS[cargo]!.eleicao]) {
+    res.status(400).json({ erro: 'cargo inválido (use 1, 3 ou 5)' });
+    return;
+  }
+  const ufs = ufsPanorama(cargo);
+  const [brPar, ...pares] = await Promise.allSettled([obter('br', 1), ...ufs.map((uf) => obter(uf, cargo))]);
+  const br = brPar?.status === 'fulfilled' ? brPar.value : null;
   const resultados = pares.map((p) => (p.status === 'fulfilled' ? p.value : null));
-  const chave = resultados.map((r) => r?.instante ?? 'x').join(',');
+  const chave = [br, ...resultados].map((r) => r?.instante ?? 'x').join(',');
 
-  if (panoramaPronto?.chave !== chave) {
-    const [br, ...ufs] = resultados;
+  let pronto = panoramasProntos.get(cargo);
+  if (pronto?.chave !== chave) {
     const corpo: Panorama = {
-      brasil: { pst: br?.secoesTotalizadas ?? null, instante: br?.instante ?? null },
-      estados: UFS_PANORAMA.map((uf, i): EstadoPanorama => {
-        const r = ufs[i];
+      cargo,
+      brasil: { pst: br?.secoesTotalizadas ?? null, instante: br?.instante ?? null, ...(br?.totais && { totais: br.totais }) },
+      estados: ufs.map((uf, i): EstadoPanorama => {
+        const r = resultados[i];
         const [primeiro, segundo] = (r?.candidatos ?? []).filter((c) => c.votos > 0);
         return {
           uf,
@@ -120,17 +134,31 @@ app.get('/api/panorama', async (req: Request, res: Response) => {
       }),
     };
     const json = Buffer.from(JSON.stringify(corpo));
-    panoramaPronto = { chave, etag: `"pan-${createHash('sha1').update(chave).digest('base64url').slice(0, 16)}"`, json, gzip: gzipSync(json) };
+    pronto = { chave, etag: `"pan-${cargo}-${createHash('sha1').update(chave).digest('base64url').slice(0, 16)}"`, json, gzip: gzipSync(json) };
+    panoramasProntos.set(cargo, pronto);
   }
 
-  res.set({ ETag: panoramaPronto.etag, 'Cache-Control': 'no-cache' });
+  res.set({ ETag: pronto.etag, 'Cache-Control': 'no-cache' });
   if (req.fresh) {
     res.status(304).end();
     return;
   }
   res.vary('Accept-Encoding').type('json');
-  if (req.acceptsEncodings('gzip') === 'gzip') res.set('Content-Encoding', 'gzip').send(panoramaPronto.gzip);
-  else res.send(panoramaPronto.json);
+  if (req.acceptsEncodings('gzip') === 'gzip') res.set('Content-Encoding', 'gzip').send(pronto.gzip);
+  else res.send(pronto.json);
+});
+
+// "O que está acontecendo agora" (regras em novidades.ts). Mais recentes primeiro;
+// ?desde=<id>: só eventos de id maior; ?limite= (padrão 30, máx. 100). Sem evento novo: 304.
+app.get('/api/novidades', (req: Request, res: Response) => {
+  const desde = Math.max(Math.floor(Number(req.query.desde) || 0), 0);
+  const limite = Math.min(Math.max(Math.floor(Number(req.query.limite) || 30), 1), 100);
+  res.set({ ETag: `"nov-${idMaisRecente()}"`, 'Cache-Control': 'no-cache' });
+  if (req.fresh) {
+    res.status(304).end();
+    return;
+  }
+  res.type('json').send(lerNovidades(desde, limite)); // pequeno: o middleware compression comprime
 });
 
 // Visão do estado: todos os cargos da UF com os mais votados (3 para Presidente, 5 nos demais).
@@ -182,6 +210,8 @@ app.get('/api/estado', async (req: Request, res: Response) => {
   else res.send(pronto.json);
 });
 
+// ?por=hora (padrão): último snapshot de cada hora · ?por=todos: cada geração do TSE
+// ?desde=<instante>: só o que veio depois do último ponto que o cliente já tem
 app.get('/api/historico', (req: Request, res: Response) => {
   const p = params(req.query.uf, req.query.cargo, res);
   if (!p) return;
@@ -228,7 +258,12 @@ app.get('/api/config', (_req, res) => {
 
 // Conexão SSE de uma disputa: avisa quando o TSE publicar versão nova.
 // Lotado (MAX_CONEXOES) -> 503 e o navegador segue no polling.
+// ?canal=novidades: canal global da linha do tempo ("event: novidade" com o EventoApuracao novo).
 app.get('/api/eventos', (req: Request, res: Response) => {
+  if (req.query.canal === CANAL_NOVIDADES) {
+    if (!assinar(CANAL_NOVIDADES, req, res)) res.status(503).json({ erro: 'Limite de conexões ao vivo atingido' });
+    return;
+  }
   const p = params(req.query.uf, req.query.cargo, res);
   if (!p) return;
   if (!assinar(`${p.uf}:${p.cargo}`, req, res)) {
@@ -280,7 +315,8 @@ app.post('/api/notificacoes/consultar', corpoJson, (req: Request, res: Response)
 });
 
 app.get('/api/saude', (_req, res) => {
-  res.json({ ok: true, conexoes: conexoesAbertas(), push: estatisticasPush() });
+  const dados: SaudeDados = { tse: saudeTSE(), coletaIntervaloMs: config.cacheMs, conexoesAoVivo: conexoesAbertas() };
+  res.json({ ok: true, conexoes: conexoesAbertas(), push: estatisticasPush(), dados });
 });
 
 // Arquivos do Vite têm hash no nome: cache de 1 ano. index.html sempre revalida.
@@ -307,6 +343,7 @@ async function coletarTudo() {
     }
   };
   await Promise.all(Array.from({ length: 4 }, trabalhador));
+  pulsar(); // agregados de deputados que já esperaram o suficiente
   coletando = false;
 }
 

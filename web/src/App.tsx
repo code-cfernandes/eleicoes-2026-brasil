@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ConfigPublica, PontoHistorico, Resultado } from '../../shared/tipos.ts';
 import { ajustarCandidatos, buscarConfig, buscarHistorico, buscarResultado, mesclarHistorico } from './api.ts';
 import { Avisos } from './componentes/Avisos.tsx';
@@ -6,6 +6,10 @@ import { Cartao } from './componentes/Cartao.tsx';
 import { Evolucao, type Granularidade } from './componentes/Evolucao.tsx';
 import { Bandeira } from './componentes/Bandeira.tsx';
 import { Inicio } from './componentes/Inicio.tsx';
+import { Mais } from './componentes/Mais.tsx';
+import { Mapa } from './componentes/Mapa.tsx';
+import { NavInferiorMobile, SidebarDesktop, useRolarAbaAtiva, type Secao } from './componentes/Navegacao.tsx';
+import { Novidades } from './componentes/Novidades.tsx';
 import { PorEstado } from './componentes/PorEstado.tsx';
 import { ResumoLideranca } from './componentes/ResumoLideranca.tsx';
 import { VisaoEstado } from './componentes/VisaoEstado.tsx';
@@ -26,12 +30,31 @@ function IconeGitHub() {
   );
 }
 
-// Cargo e UF ficam na URL: dá para compartilhar o link de uma disputa
-// "cargo" 0 = aba "Por estado"; -1 = visão especializada de um estado; -2 = página Início
-// (nenhum dos três é uma disputa: o efeito de atualização por cargo/SSE fica parado neles)
+// Cargo e UF ficam na URL: dá para compartilhar o link de uma disputa.
+// Sentinelas de "cargo" para seções que não são uma disputa (o efeito de atualização por
+// cargo/SSE fica parado nelas): 0 Por estado, -1 Visão do estado, -2 Início, -3 Mapa,
+// -4 Novidades, -5 Mais (só mobile), -6 Sobre (só desktop).
 const POR_ESTADO = 0;
 const VISAO_ESTADO = -1;
 const INICIO = -2;
+const MAPA = -3;
+const NOVIDADES = -4;
+const MAIS = -5;
+const SOBRE = -6;
+
+// Mapeia o sentinela de cargo para a Secao da navegação (sidebar/nav inferior)
+function secaoDoCargo(cargo: number): Secao {
+  switch (cargo) {
+    case INICIO: return 'inicio';
+    case POR_ESTADO: return 'por-estado';
+    case VISAO_ESTADO: return 'visao-estado';
+    case MAPA: return 'mapa';
+    case NOVIDADES: return 'novidades';
+    case MAIS: return 'mais';
+    case SOBRE: return 'sobre';
+    default: return 'candidatos';
+  }
+}
 
 function lerUrl() {
   const q = new URLSearchParams(location.search);
@@ -41,6 +64,10 @@ function lerUrl() {
   if (!location.search) return { cargo: INICIO, uf: 'br' };
   if (aba === 'estados') return { cargo: POR_ESTADO, uf };
   if (aba === 'estado') return { cargo: VISAO_ESTADO, uf };
+  if (aba === 'mapa') return { cargo: MAPA, uf: 'br' };
+  if (aba === 'novidades') return { cargo: NOVIDADES, uf: 'br' };
+  if (aba === 'mais') return { cargo: MAIS, uf: 'br' };
+  if (aba === 'sobre') return { cargo: SOBRE, uf: 'br' };
   return { cargo: Number(q.get('cargo')) || 1, uf };
 }
 
@@ -59,21 +86,11 @@ export function App() {
   const [limite, setLimite] = useState(POR_PAGINA);
   const [destacado, setDestacado] = useState<string | null>(null);
   const [fixado, setFixado] = useState<string | null>(null);
-  const abaAtivaRef = useRef<HTMLButtonElement>(null);
+  const [subAba, setSubAba] = useState<'resultados' | 'evolucao' | 'por-estado'>('resultados');
+  // Rola a aba ativa do seletor de cargo (dentro de "Candidatos") para o centro visível
+  const abaAtivaRef = useRolarAbaAtiva(cargo);
 
   useEffect(() => { buscarConfig().then(setCfg).catch((e: Error) => setErro(e.message)); }, []);
-
-  // Barra fixa com rolagem horizontal nas abas: mantém a aba atual visível ao trocar de cargo.
-  // Rola só o container das abas (scrollLeft), nunca a página: scrollIntoView mexeria no scroll
-  // vertical também, porque o elemento está dentro de uma barra sticky.
-  useEffect(() => {
-    const botao = abaAtivaRef.current;
-    const lista = botao?.parentElement;
-    if (!botao || !lista) return;
-    const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const alvo = botao.offsetLeft + botao.offsetWidth / 2 - lista.clientWidth / 2;
-    lista.scrollTo({ left: Math.max(0, alvo), behavior: reduzido ? 'auto' : 'smooth' });
-  }, [cargo]);
 
   const cargoAtual = cfg?.cargos.find((c) => c.codigo === cargo);
 
@@ -88,11 +105,15 @@ export function App() {
     const url = cargo === INICIO ? '/'
       : cargo === POR_ESTADO ? '?aba=estados'
       : cargo === VISAO_ESTADO ? `?aba=estado&uf=${uf}`
+      : cargo === MAPA ? '?aba=mapa'
+      : cargo === NOVIDADES ? '?aba=novidades'
+      : cargo === MAIS ? '?aba=mais'
+      : cargo === SOBRE ? '?aba=sobre'
       : `?cargo=${cargo}&uf=${uf}`;
     history.replaceState(null, '', url);
     if (uf !== 'br') setUfEstadual(uf);
     setBusca(''); setLimite(POR_PAGINA); setFixado(null); setDestacado(null);
-    setResultado(undefined); setHistorico([]);
+    setResultado(undefined); setHistorico([]); setSubAba('resultados');
   }, [cargo, uf]);
 
   // Atualização: o servidor avisa por SSE quando o TSE publica versão nova; aí a tela
@@ -215,174 +236,248 @@ export function App() {
   const apuracaoComecou = (resultado?.secoesTotalizadas ?? 0) > 0 && candidatos.some((c) => c.votos > 0);
   const proporcional = !!cargoAtual?.proporcional;
 
+  const secao = secaoDoCargo(cargo);
+  const ir = (s: Secao) => {
+    const destino: Record<Secao, { cargo: number; uf: string }> = {
+      inicio: { cargo: INICIO, uf: 'br' },
+      candidatos: { cargo: cargoAtual ? cargo : (cfg?.cargos[0]?.codigo ?? 1), uf: cargo > 0 ? uf : ufEstadual },
+      mapa: { cargo: MAPA, uf: 'br' },
+      novidades: { cargo: NOVIDADES, uf: 'br' },
+      mais: { cargo: MAIS, uf: 'br' },
+      'por-estado': { cargo: POR_ESTADO, uf: 'br' },
+      'visao-estado': { cargo: VISAO_ESTADO, uf },
+      sobre: { cargo: SOBRE, uf: 'br' },
+    };
+    setDisputa(destino[s]);
+    scrollTo({ top: 0 });
+  };
+  const abrirCandidatos = (c: number) => { setDisputa({ cargo: c, uf: ufEstadual }); scrollTo({ top: 0 }); };
+  const abrirEstado = (u: string) => { setDisputa({ cargo: VISAO_ESTADO, uf: u }); scrollTo({ top: 0 }); };
+
+  const ehDisputa = cargo > 0;
+
   return (
-    <main>
-      <header className="topo">
-        <div className="topo-titulo">
-          <h1>
-            {/* Volta à página Início. Link real: Ctrl/⌘+clique abre em nova aba */}
-            <a href="/" className="topo-inicio" onClick={(e) => {
-              if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-              e.preventDefault();
-              setDisputa({ cargo: INICIO, uf: 'br' });
-              scrollTo({ top: 0 });
-            }}>
-              Apuração 2026 <span>{cfg?.turno}</span>
+    <div className="layout">
+      <SidebarDesktop cargos={cfg?.cargos ?? []} secao={secao} cargoCandidatos={cargo > 0 ? cargo : cfg?.cargos[0]?.codigo ?? 1}
+        onIr={ir} onAbrirCandidatos={abrirCandidatos} />
+
+      <main className="conteudo">
+        <header className="topo">
+          <div className="topo-titulo">
+            <h1>
+              {/* Volta à página Início. Link real: Ctrl/⌘+clique abre em nova aba */}
+              <a href="/" className="topo-inicio" onClick={(e) => {
+                if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
+                ir('inicio');
+              }}>
+                Eleições <span className="topo-ano">2026</span>
+              </a>
+            </h1>
+            <p className="topo-subtitulo">Totalização ao vivo · {cfg?.turno}</p>
+          </div>
+
+          <div className="topo-status">
+            {/* O indicador reflete a conexão SSE da disputa aberta; no Início (e nas demais
+                seções sem uma disputa específica) cada bloco mostra seu próprio "Ao vivo". */}
+            {ehDisputa && (
+              <span className={`topo-ao-vivo${aoVivo ? ' topo-ao-vivo-ativo' : ''}`}>
+                <span className="ao-vivo" aria-hidden="true" />
+                {aoVivo ? 'AO VIVO' : 'Reconectando'}
+              </span>
+            )}
+            {ehDisputa && resultado?.instante && (
+              <span className="topo-atualizacao" role="status">
+                {resultado.secoesTotalizadas === 0
+                  // Antes da totalização o arquivo do TSE tem horário de dias atrás: o que
+                  // interessa é quando o site conferiu pela última vez, no relógio do aparelho.
+                  ? <>Verificado {verificadoEm ? `às ${horaDoAparelho(verificadoEm)}` : '…'}</>
+                  : <>Última atualização: {dataHora(resultado.instante)}</>}
+              </span>
+            )}
+            <a className="topo-fonte" href="https://resultados.tse.jus.br" target="_blank" rel="noopener noreferrer">
+              Fonte: TSE · Ver no TSE
             </a>
-          </h1>
-          <a className="topo-github" href="https://github.com/code-cfernandes/eleicoes-2026-brasil" target="_blank" rel="noopener noreferrer">
-            <IconeGitHub />
-            Código aberto no GitHub, deixe sua estrela
-          </a>
-        </div>
-        {cargo !== POR_ESTADO && cargo !== VISAO_ESTADO && cargo !== INICIO && <p className={`status${erro ? ' status-erro' : ''}`} role="status">
-          {erro
-            ? `Sem conexão com os resultados (${erro}). Nova tentativa em ${(cfg?.intervaloMs ?? 30000) / 1000}s.`
-            : resultado?.instante
-              ? resultado.secoesTotalizadas === 0
-                // Antes da apuração o arquivo do TSE tem horário de dias atrás (e diferente por disputa):
-                // o que interessa é quando o site conferiu pela última vez, no relógio do aparelho.
-                ? <>{aoVivo && <span className="ao-vivo" aria-hidden="true" />}Aguardando o início da apuração, às 17h (horário de Brasília).{verificadoEm && ` Verificado às ${horaDoAparelho(verificadoEm)}`}</>
-                : aoVivo
-                  ? <><span className="ao-vivo" aria-hidden="true" />Ao vivo. TSE atualizou {dataHora(resultado.instante)}</>
-                  : <>TSE atualizou {dataHora(resultado.instante)}. Conferindo a cada {(cfg?.intervaloMs ?? 30000) / 1000}s</>
-              : 'Carregando…'}
-        </p>}
-      </header>
+          </div>
 
-      <nav className="filtros" aria-label="Disputa">
-        <div className="cargos" role="tablist" aria-label="Cargo">
-          <button type="button" role="tab" aria-selected={cargo === INICIO}
-            ref={cargo === INICIO ? abaAtivaRef : undefined}
-            onClick={() => { setDisputa({ cargo: INICIO, uf: 'br' }); scrollTo({ top: 0 }); }}>
-            Início
-          </button>
-          {cfg?.cargos.map((c) => (
-            <button key={c.codigo} type="button" role="tab" aria-selected={c.codigo === cargo}
-              ref={c.codigo === cargo ? abaAtivaRef : undefined}
-              onClick={() => setDisputa({ cargo: c.codigo, uf })}>
-              {c.nome}
+          {ehDisputa && erro && (
+            <p className="status status-erro" role="status">
+              Sem conexão com os resultados ({erro}). Nova tentativa em {(cfg?.intervaloMs ?? 30000) / 1000}s.
+            </p>
+          )}
+        </header>
+
+        {secao === 'candidatos' && (
+          <nav className="filtros" aria-label="Disputa">
+            <div className="cargos" role="tablist" aria-label="Cargo">
+              {cfg?.cargos.map((c) => (
+                <button key={c.codigo} type="button" role="tab" aria-selected={c.codigo === cargo}
+                  ref={c.codigo === cargo ? abaAtivaRef : undefined}
+                  onClick={() => setDisputa({ cargo: c.codigo, uf })}>
+                  {c.nome}
+                </button>
+              ))}
+            </div>
+            <label className="seletor-uf">
+              <span className="visualmente-oculto">Local</span>
+              <select value={uf} onChange={(e) => setDisputa({ cargo, uf: e.target.value })}>
+                {cargoAtual?.ufs.map((u) => <option key={u} value={u}>{NOMES_UF[u] ?? u.toUpperCase()}</option>)}
+              </select>
+            </label>
+          </nav>
+        )}
+
+        {secao === 'inicio' ? (
+          <Inicio cfg={cfg} tema={tema}
+            onAbrirDisputa={(c, u) => { setDisputa({ cargo: c, uf: u }); scrollTo({ top: 0 }); }}
+            onAbrirEstado={abrirEstado}
+            onAbrirPorEstado={() => ir('por-estado')}
+            onAbrirMapa={() => ir('mapa')}
+            onAbrirNovidades={() => ir('novidades')} />
+        ) : secao === 'por-estado' ? (
+          <PorEstado intervaloMs={cfg?.intervaloMs ?? 30_000}
+            onAbrir={(u) => {
+              // Exterior só tem Presidente: vai direto para a disputa. Estados têm visão própria.
+              if (u === 'zz') { setDisputa({ cargo: 1, uf: u }); scrollTo({ top: 0 }); } else abrirEstado(u);
+            }} />
+        ) : secao === 'visao-estado' ? (
+          <VisaoEstado uf={uf} intervaloMs={cfg?.intervaloMs ?? 30_000}
+            onVoltar={() => ir('por-estado')}
+            onAbrirDisputa={(c, u) => { setDisputa({ cargo: c, uf: u }); scrollTo({ top: 0 }); }} />
+        ) : secao === 'mapa' ? (
+          <Mapa intervaloMs={cfg?.intervaloMs ?? 30_000} onAbrirEstado={abrirEstado} />
+        ) : secao === 'novidades' ? (
+          <Novidades intervaloMs={cfg?.intervaloMs ?? 30_000} />
+        ) : secao === 'mais' ? (
+          <Mais />
+        ) : secao === 'sobre' ? (
+          <Mais />
+        ) : (<>
+
+        <section className="andamento" aria-labelledby="disputa-titulo">
+          <div className="andamento-cabecalho">
+            <h2 id="disputa-titulo">
+              {cargoAtual?.nome ?? '…'}, {local}
+              {uf !== 'br' && <Bandeira uf={uf} />}
+            </h2>
+            <p className="andamento-numero">
+              <strong>{resultado ? pct(resultado.secoesTotalizadas) : '–'}</strong> das seções totalizadas
+            </p>
+          </div>
+          <div className="trilho trilho-grande" aria-hidden="true">
+            <div style={{ width: `${resultado?.secoesTotalizadas ?? 0}%` }} />
+          </div>
+          {resultado && (
+            <p className="andamento-detalhe">
+              {candidatos.length} candidatos
+              {vagas > 1 ? `, ${vagas} vagas` : ', 1 vaga'}
+              {proporcional && '. Deputados são eleitos pelo quociente partidário: a ordem da lista não define quem entra'}
+            </p>
+          )}
+
+          {resultado && !apuracaoComecou && (
+            <p className="resumo resumo-espera">
+              A totalização desta disputa ainda não começou. Os números aparecem assim que o TSE totalizar as primeiras seções.
+            </p>
+          )}
+
+          {resultado && apuracaoComecou && (
+            <ResumoLideranca candidatos={candidatos} vagas={vagas} proporcional={proporcional} />
+          )}
+
+          {resultado?.totais && resultado.totais.votosTotais > 0 && <BrancosNulos totais={resultado.totais} />}
+
+          {cfg && cargoAtual?.ufs.includes(uf) && (
+            <Avisos uf={uf} cargo={cargo} chave={cfg.chavePush} proporcional={cargoAtual.proporcional} />
+          )}
+        </section>
+
+        {(() => {
+          const porEstadoDisponivel = cargo === 1 || cargo === 3 || cargo === 5;
+          return (
+            <div className="alternar subabas" role="group" aria-label="Seção da disputa">
+              <button type="button" aria-pressed={subAba === 'resultados'} onClick={() => setSubAba('resultados')}>Resultados</button>
+              <button type="button" aria-pressed={subAba === 'evolucao'} onClick={() => setSubAba('evolucao')}>Evolução</button>
+              {porEstadoDisponivel && (
+                <button type="button" aria-pressed={subAba === 'por-estado'} onClick={() => setSubAba('por-estado')}>Por estado</button>
+              )}
+            </div>
+          );
+        })()}
+
+        {subAba === 'resultados' && (<>
+          {comBusca && (
+            <div className="busca">
+              <label>
+                <span className="visualmente-oculto">Buscar candidato</span>
+                <input type="search" placeholder="Buscar por nome, número ou partido" value={busca}
+                  onChange={(e) => { setBusca(e.target.value); setLimite(POR_PAGINA); }} />
+              </label>
+              {termo && <span className="busca-total">{filtrados.length} encontrado{filtrados.length === 1 ? '' : 's'}</span>}
+            </div>
+          )}
+
+          <ol className="cartoes" aria-label="Candidatos, do mais votado ao menos votado">
+            {visiveis.map((c, i) => (
+              <Cartao key={c.numero} c={c}
+                cor={corSerie(tema, slots.get(c.numero))}
+                noGrafico={noGrafico.has(c.numero)}
+                ativo={ativo === c.numero}
+                esmaecido={ativo !== null && ativo !== c.numero}
+                destaque={apuracaoComecou && !termo && i < 3}
+                apuracaoComecou={apuracaoComecou}
+                dentroDasVagas={!termo && !proporcional && vagas > 1 && c.votos > 0 && i < vagas}
+                referencia50={!proporcional && vagas === 1}
+                onDestacar={setDestacado} onFixar={fixar} />
+            ))}
+          </ol>
+          {termo && !filtrados.length && <p className="vazio">Nenhum candidato com “{busca.trim()}”. Confira a grafia ou busque pelo número.</p>}
+          {filtrados.length > limite && (
+            <button type="button" className="mais-botao" onClick={() => setLimite((l) => l + POR_PAGINA)}>
+              Mostrar mais {Math.min(POR_PAGINA, filtrados.length - limite)} de {filtrados.length - limite} restantes
             </button>
-          ))}
-          <button type="button" role="tab" aria-selected={cargo === POR_ESTADO || cargo === VISAO_ESTADO}
-            ref={cargo === POR_ESTADO || cargo === VISAO_ESTADO ? abaAtivaRef : undefined}
-            onClick={() => setDisputa({ cargo: POR_ESTADO, uf })}>
-            Por estado
-          </button>
-        </div>
-        {cargo !== POR_ESTADO && cargo !== VISAO_ESTADO && cargo !== INICIO && (
-          <label className="seletor-uf">
-            <span className="visualmente-oculto">Local</span>
-            <select value={uf} onChange={(e) => setDisputa({ cargo, uf: e.target.value })}>
-              {cargoAtual?.ufs.map((u) => <option key={u} value={u}>{NOMES_UF[u] ?? u.toUpperCase()}</option>)}
-            </select>
-          </label>
+          )}
+        </>)}
+
+        {subAba === 'evolucao' && (
+          <Evolucao historico={historico} slots={slots} por={por} onPor={setPor}
+            ativo={ativo} onDestacar={setDestacado} onFixar={fixar} tema={tema}
+            referencia50={!proporcional && vagas === 1} />
         )}
-      </nav>
 
-      {cargo === INICIO ? (
-        <Inicio cfg={cfg}
-          onAbrirDisputa={(c, u) => { setDisputa({ cargo: c, uf: u }); scrollTo({ top: 0 }); }}
-          onAbrirEstado={(u) => { setDisputa({ cargo: VISAO_ESTADO, uf: u }); scrollTo({ top: 0 }); }}
-          onAbrirPorEstado={() => { setDisputa({ cargo: POR_ESTADO, uf: 'br' }); scrollTo({ top: 0 }); }} />
-      ) : cargo === POR_ESTADO ? (
-        <PorEstado intervaloMs={cfg?.intervaloMs ?? 30_000}
-          onAbrir={(u) => {
-            // Exterior só tem Presidente: vai direto para a disputa. Estados têm visão própria.
-            setDisputa(u === 'zz' ? { cargo: 1, uf: u } : { cargo: VISAO_ESTADO, uf: u });
-            scrollTo({ top: 0 });
-          }} />
-      ) : cargo === VISAO_ESTADO ? (
-        <VisaoEstado uf={uf} intervaloMs={cfg?.intervaloMs ?? 30_000}
-          onVoltar={() => { setDisputa({ cargo: POR_ESTADO, uf }); scrollTo({ top: 0 }); }}
-          onAbrirDisputa={(c, u) => { setDisputa({ cargo: c, uf: u }); scrollTo({ top: 0 }); }} />
-      ) : (<>
+        {subAba === 'por-estado' && (cargo === 1 || cargo === 3 || cargo === 5) && (
+          <Mapa intervaloMs={cfg?.intervaloMs ?? 30_000} onAbrirEstado={abrirEstado} cargoInicial={cargo} fixarCargo />
+        )}
 
-      <section className="andamento" aria-labelledby="disputa-titulo">
-        <div className="andamento-cabecalho">
-          <h2 id="disputa-titulo">
-            {cargoAtual?.nome ?? '…'}, {local}
-            {uf !== 'br' && <Bandeira uf={uf} />}
-          </h2>
-          <p className="andamento-numero">
-            <strong>{resultado ? pct(resultado.secoesTotalizadas) : '–'}</strong> das seções totalizadas
+        </>)}
+
+        <footer className="rodape">
+          <p>
+            Fonte: TSE{resultado?.atualizadoEm ? `, dados gerados em ${resultado.atualizadoEm}` : ''}. A tela se atualiza sozinha quando o TSE publica dados novos.
           </p>
-        </div>
-        <div className="trilho trilho-grande" aria-hidden="true">
-          <div style={{ width: `${resultado?.secoesTotalizadas ?? 0}%` }} />
-        </div>
-        {resultado && (
-          <p className="andamento-detalhe">
-            {candidatos.length} candidatos
-            {vagas > 1 ? `, ${vagas} vagas` : ', 1 vaga'}
-            {proporcional && '. Deputados são eleitos pelo quociente partidário: a ordem da lista não define quem entra'}
+          <p>
+            Projeto de código aberto, sem vínculo com o TSE.{' '}
+            <a href="https://github.com/code-cfernandes/eleicoes-2026-brasil" target="_blank" rel="noopener noreferrer">
+              Veja no GitHub e deixe sua estrela
+            </a>
           </p>
-        )}
+        </footer>
+      </main>
 
-        {resultado && !apuracaoComecou && (
-          <p className="resumo resumo-espera">
-            A apuração desta disputa ainda não começou. Os números aparecem assim que o TSE totalizar as primeiras seções.
-          </p>
-        )}
+      <NavInferiorMobile secao={secao} onIr={ir} />
+    </div>
+  );
+}
 
-        {resultado && apuracaoComecou && (
-          <ResumoLideranca candidatos={candidatos} vagas={vagas} proporcional={proporcional} />
-        )}
-
-        {cfg && cargoAtual?.ufs.includes(uf) && (
-          <Avisos uf={uf} cargo={cargo} chave={cfg.chavePush} proporcional={cargoAtual.proporcional} />
-        )}
-      </section>
-
-      {comBusca && (
-        <div className="busca">
-          <label>
-            <span className="visualmente-oculto">Buscar candidato</span>
-            <input type="search" placeholder="Buscar por nome, número ou partido" value={busca}
-              onChange={(e) => { setBusca(e.target.value); setLimite(POR_PAGINA); }} />
-          </label>
-          {termo && <span className="busca-total">{filtrados.length} encontrado{filtrados.length === 1 ? '' : 's'}</span>}
-        </div>
-      )}
-
-      <ol className="cartoes" aria-label="Candidatos, do mais votado ao menos votado">
-        {visiveis.map((c, i) => (
-          <Cartao key={c.numero} c={c}
-            cor={corSerie(tema, slots.get(c.numero))}
-            noGrafico={noGrafico.has(c.numero)}
-            ativo={ativo === c.numero}
-            esmaecido={ativo !== null && ativo !== c.numero}
-            destaque={apuracaoComecou && !termo && i < 3}
-            apuracaoComecou={apuracaoComecou}
-            dentroDasVagas={!termo && !proporcional && vagas > 1 && c.votos > 0 && i < vagas}
-            referencia50={!proporcional && vagas === 1}
-            onDestacar={setDestacado} onFixar={fixar} />
-        ))}
-      </ol>
-      {termo && !filtrados.length && <p className="vazio">Nenhum candidato com “{busca.trim()}”. Confira a grafia ou busque pelo número.</p>}
-      {filtrados.length > limite && (
-        <button type="button" className="mais" onClick={() => setLimite((l) => l + POR_PAGINA)}>
-          Mostrar mais {Math.min(POR_PAGINA, filtrados.length - limite)} de {filtrados.length - limite} restantes
-        </button>
-      )}
-
-      <Evolucao historico={historico} slots={slots} por={por} onPor={setPor}
-        ativo={ativo} onDestacar={setDestacado} onFixar={fixar} tema={tema}
-        referencia50={!proporcional && vagas === 1} />
-
-      </>)}
-
-      <footer className="rodape">
-        <p>
-          Fonte: TSE{resultado?.atualizadoEm ? `, dados gerados em ${resultado.atualizadoEm}` : ''}. A tela se atualiza sozinha quando o TSE publica dados novos.
-        </p>
-        <p>
-          Projeto de código aberto, sem vínculo com o TSE.{' '}
-          <a href="https://github.com/code-cfernandes/eleicoes-2026-brasil" target="_blank" rel="noopener noreferrer">
-            Veja no GitHub e deixe sua estrela
-          </a>
-        </p>
-      </footer>
-    </main>
+// Brancos, nulos e abstenção à parte da tabela de candidatos: os percentuais dos candidatos
+// são sobre votos válidos, não sobre o total (brancos/nulos não entram nessa conta)
+function BrancosNulos({ totais }: { totais: NonNullable<Resultado['totais']> }) {
+  const pctSobreTotal = (v: number) => totais.votosTotais > 0 ? pct((v / totais.votosTotais) * 100) : '–';
+  return (
+    <div className="brancos-nulos">
+      <span><strong>{votos(totais.brancos)}</strong> brancos ({pctSobreTotal(totais.brancos)})</span>
+      <span><strong>{votos(totais.nulos)}</strong> nulos ({pctSobreTotal(totais.nulos)})</span>
+      <span><strong>{pct(totais.eleitores > 0 ? (totais.abstencao / totais.eleitores) * 100 : 0)}</strong> de abstenção</span>
+    </div>
   );
 }

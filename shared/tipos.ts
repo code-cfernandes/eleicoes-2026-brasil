@@ -27,6 +27,19 @@ export interface Candidato {
   situacao: string;
 }
 
+/** Números gerais da disputa (mesmo arquivo do TSE: blocos s, e e v) */
+export interface Totais {
+  secoes: number;             // s.ts
+  secoesTotalizadas: number;  // s.st
+  eleitores: number;          // e.te
+  comparecimento: number;     // e.c
+  abstencao: number;          // e.a
+  votosTotais: number;        // v.tv  (todos os votos computados até agora)
+  validos: number;            // v.vv
+  brancos: number;            // v.vb
+  nulos: number;              // v.tvn (nulos + nulos técnicos)
+}
+
 export interface Resultado {
   cargo: number;
   nomeCargo: string;
@@ -36,6 +49,8 @@ export interface Resultado {
   secoesTotalizadas: number;
   vagas: number;
   candidatos: Candidato[];
+  /** Ausente em respostas antigas/cache; a tela deve tolerar */
+  totais?: Totais;
 }
 
 export interface PontoHistorico {
@@ -61,7 +76,9 @@ export interface EstadoPanorama {
 }
 
 export interface Panorama {
-  brasil: { pst: number | null; instante: number | null };
+  /** Cargo do líder mostrado em cada UF: 1 Presidente (padrão), 3 Governador, 5 Senador (GET /api/panorama?cargo=) */
+  cargo?: number;
+  brasil: { pst: number | null; instante: number | null; totais?: Totais };
   estados: EstadoPanorama[];
 }
 
@@ -100,4 +117,43 @@ export interface ConfigPublica {
   inicioApuracao: number | null;
   turno: string;
   cargos: Cargo[];
+}
+
+// "O que está acontecendo agora": eventos estatísticos da totalização (sem análise política).
+// GET /api/novidades?desde=<id>&limite=30 → mais recentes primeiro; com ?desde, só os de id maior.
+export type TipoEvento =
+  | 'inicio'            // a totalização da disputa começou
+  | 'marco'             // disputa/UF atingiu 25, 50, 75, 90 ou 100% das seções
+  | 'estado-concluido'  // uma UF chegou a 100%
+  | 'virada'            // mudou quem lidera (ou quem está nas vagas, no Senado)
+  | 'definido'          // TSE marcou eleito ou 2º turno
+  | 'ritmo'             // volume de votos totalizados num intervalo (ex.: +1,2 mi em 5 min)
+  | 'diferenca';        // diferença entre 1º e 2º mudou de forma relevante
+
+export interface EventoApuracao {
+  id: number;
+  /** epoch ms (horário da geração do TSE que originou o evento) */
+  instante: number;
+  tipo: TipoEvento;
+  uf: string;    // 'br', UF ou 'zz'
+  cargo: number;
+  texto: string; // frase pronta em português, neutra
+}
+
+export interface RespostaNovidades {
+  eventos: EventoApuracao[];
+}
+
+// Saúde da coleta, para o rodapé "Status dos dados" (GET /api/saude → { ..., dados: SaudeDados })
+export interface SaudeDados {
+  tse: {
+    /** Última resposta bem-sucedida do TSE (epoch ms) */
+    ultimaRespostaOk: number | null;
+    ultimaFalha: number | null;
+    /** Falhas nos últimos 10 minutos */
+    falhasRecentes: number;
+    latenciaMediaMs: number | null;
+  };
+  coletaIntervaloMs: number;
+  conexoesAoVivo: number;
 }

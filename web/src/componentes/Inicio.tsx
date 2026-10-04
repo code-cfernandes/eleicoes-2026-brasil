@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Candidato, ConfigPublica, EstadoPanorama, Panorama, Resultado, VisaoEstado } from '../../../shared/tipos.ts';
+import type { Candidato, ConfigPublica, EstadoPanorama, Panorama, PontoHistorico, Resultado, VisaoEstado } from '../../../shared/tipos.ts';
 import { NOMES_UF } from '../../../shared/ufs.ts';
-import { buscarEstado, buscarPanorama, buscarResultado } from '../api.ts';
-import { dataHora, horaDoAparelho, pct, votos } from '../formato.ts';
+import { ajustarCandidatos, buscarEstado, buscarHistorico, buscarPanorama, buscarResultado, mesclarHistorico } from '../api.ts';
+import { dataHora, pct, votos } from '../formato.ts';
 import { Avisos } from './Avisos.tsx';
 import { Bandeira } from './Bandeira.tsx';
 import { Foto } from './Cartao.tsx';
+import { Evolucao } from './Evolucao.tsx';
+import { MapaBrasil } from './MapaBrasil.tsx';
+import { Novidades } from './Novidades.tsx';
+import { corSerie, MAX_SERIES, type Tema } from '../paleta.ts';
 import { ResumoLideranca } from './ResumoLideranca.tsx';
 
 // Página inicial: o que a maioria quer saber em poucos segundos, sem precisar escolher
-// cargo e local primeiro. Quatro blocos, nesta ordem: contagem regressiva (só antes da
-// apuração), placar nacional de Presidente, "Seu estado" (personalizado) e "Pelo país".
+// cargo e local primeiro. Ordem: contagem regressiva (só antes da totalização) → indicadores
+// → Presidente + Mapa (lado a lado no desktop) → Evolução + Novidades (lado a lado no desktop)
+// → Seu estado (compacto) → Pelo país.
 
 const CHAVE_ESTADO_PREFERIDO = 'eleicoes2026:estado';
 const nome = (uf: string) => NOMES_UF[uf] ?? uf.toUpperCase();
@@ -29,7 +34,14 @@ function salvarEstado(uf: string | null) {
   } catch { /* modo privado ou localStorage indisponível: segue sem lembrar */ }
 }
 
-// Conta regressiva até o início da apuração, atualizada a cada minuto
+// Formato compacto "68,4 mi" para votos grandes
+function votosCompacto(v: number) {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mi`;
+  if (v >= 1_000) return `${(v / 1_000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mil`;
+  return v.toLocaleString('pt-BR');
+}
+
+// Conta regressiva até o início da totalização, atualizada a cada minuto
 function useContagem(inicioApuracao: number | null) {
   const [agora, setAgora] = useState(() => Date.now());
   useEffect(() => {
@@ -46,45 +58,32 @@ function useContagem(inicioApuracao: number | null) {
 
 interface PropsInicio {
   cfg: ConfigPublica | undefined;
+  tema: Tema;
   onAbrirDisputa: (cargo: number, uf: string) => void;
   onAbrirEstado: (uf: string) => void;
   onAbrirPorEstado: () => void;
+  onAbrirMapa: () => void;
+  onAbrirNovidades: () => void;
 }
 
-export function Inicio({ cfg, onAbrirDisputa, onAbrirEstado, onAbrirPorEstado }: PropsInicio) {
+export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEstado, onAbrirMapa, onAbrirNovidades }: PropsInicio) {
   const faltam = useContagem(cfg?.inicioApuracao ?? null);
-  // O relógio do aparelho diz quando a apuração deveria começar, mas o dado real do TSE manda:
-  // se as seções já começaram a ser totalizadas, a contagem some mesmo que o relógio ache que não
+  // O relógio do aparelho diz quando a totalização deveria começar, mas o dado real do TSE
+  // manda: se as seções já começaram a ser totalizadas, a contagem some mesmo que o relógio
+  // ainda não tenha batido 17h (ex.: adiantada no servidor de testes).
   const [apuracaoComecouDados, setApuracaoComecouDados] = useState(false);
   const mostrarContagem = faltam !== null && !apuracaoComecouDados;
 
-  return (
-    <div className="inicio">
-      {mostrarContagem && (
-        <section className="inicio-contagem" aria-live="polite">
-          <p>
-            A apuração começa às 17h (horário de Brasília){faltam && <>, faltam <strong>{faltam}</strong></>}.
-          </p>
-          {cfg && <Avisos uf="br" cargo={1} chave={cfg.chavePush} proporcional={false} />}
-        </section>
-      )}
-
-      <PlacarNacional intervaloMs={cfg?.intervaloMs ?? 30_000} onAbrirDisputa={onAbrirDisputa} onApuracaoComecou={setApuracaoComecouDados} />
-      <SeuEstado intervaloMs={cfg?.intervaloMs ?? 30_000} onAbrirEstado={onAbrirEstado} />
-      <PeloPais intervaloMs={cfg?.intervaloMs ?? 30_000} onAbrirEstado={onAbrirEstado} onAbrirPorEstado={onAbrirPorEstado} />
-    </div>
-  );
-}
-
-// Bloco 1: placar nacional de Presidente, com SSE (mesmo padrão de App.tsx, sem histórico)
-function PlacarNacional({ intervaloMs, onAbrirDisputa, onApuracaoComecou }: {
-  intervaloMs: number; onAbrirDisputa: (cargo: number, uf: string) => void; onApuracaoComecou: (v: boolean) => void;
-}) {
   const [resultado, setResultado] = useState<Resultado>();
+  const [historico, setHistorico] = useState<PontoHistorico[]>([]);
+  const [panorama, setPanorama] = useState<Panorama>();
   const [erro, setErro] = useState<string>();
   const [aoVivo, setAoVivo] = useState(false);
   const [verificadoEm, setVerificadoEm] = useState<number>();
 
+  const intervaloMs = cfg?.intervaloMs ?? 30_000;
+
+  // Placar nacional de Presidente, com SSE (mesmo padrão de App.tsx) + histórico para o gráfico
   useEffect(() => {
     const ctrl = new AbortController();
     const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -93,6 +92,8 @@ function PlacarNacional({ intervaloMs, onAbrirDisputa, onApuracaoComecou }: {
       timers.add(t);
     };
     let versao: number | null | undefined;
+    let pontosHist: PontoHistorico[] = [];
+    let acompanhados = new Set<string>();
     let vivo = false;
     let seguranca: ReturnType<typeof setTimeout> | undefined;
     let rodando = false, deNovo = false;
@@ -103,7 +104,22 @@ function PlacarNacional({ intervaloMs, onAbrirDisputa, onApuracaoComecou }: {
       clearTimeout(seguranca);
       try {
         const r = await buscarResultado('br', 1, ctrl.signal);
-        if (r.instante !== versao) { setResultado(r); versao = r.instante; }
+        if (r.instante !== versao) {
+          setResultado(r);
+          try {
+            const desde = pontosHist.at(-1)?.instante ?? 0;
+            const h = await buscarHistorico('br', 1, 'hora', 30, desde, ctrl.signal);
+            pontosHist = mesclarHistorico(pontosHist, h.pontos, 'hora');
+            const novatos = desde ? h.numeros.filter((n) => !acompanhados.has(n)) : [];
+            const passado = novatos.length ? (await buscarHistorico('br', 1, 'hora', 30, 0, ctrl.signal, novatos)).pontos : [];
+            acompanhados = new Set(h.numeros);
+            pontosHist = ajustarCandidatos(pontosHist, passado, 'hora', acompanhados);
+            setHistorico(pontosHist);
+            versao = r.instante;
+          } catch (e) {
+            if (ctrl.signal.aborted) throw e;
+          }
+        }
         setErro(undefined);
         setVerificadoEm(Date.now());
       } catch (e) {
@@ -150,74 +166,185 @@ function PlacarNacional({ intervaloMs, onAbrirDisputa, onApuracaoComecou }: {
     };
   }, [intervaloMs]);
 
+  // Panorama nacional (para indicador "Estados concluídos" e a grade "Pelo país")
+  useEffect(() => {
+    const ctrl = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const carregar = async () => {
+      clearTimeout(timer);
+      try { setPanorama(await buscarPanorama(ctrl.signal)); } catch { /* tenta de novo na próxima rodada */ }
+      if (!ctrl.signal.aborted) timer = setTimeout(carregar, intervaloMs);
+    };
+    void carregar();
+    return () => { ctrl.abort(); clearTimeout(timer); };
+  }, [intervaloMs]);
+
   const candidatos = resultado?.candidatos ?? [];
   const apuracaoComecou = (resultado?.secoesTotalizadas ?? 0) > 0 && candidatos.some((c) => c.votos > 0);
   const top3 = candidatos.filter((c) => c.votos > 0).slice(0, 3);
 
-  useEffect(() => { onApuracaoComecou(apuracaoComecou); }, [apuracaoComecou, onApuracaoComecou]);
+  useEffect(() => { setApuracaoComecouDados(apuracaoComecou); }, [apuracaoComecou]);
+
+  const slots = useMemo(() => {
+    const top = candidatos.filter((c) => c.votos > 0).slice(0, MAX_SERIES);
+    const fonte = top.length ? top : (historico.at(-1)?.cand ?? []).slice(0, MAX_SERIES);
+    return new Map([...fonte].map((c) => c.numero)
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }))
+      .map((n, i) => [n, i] as const));
+  }, [candidatos, historico]);
+
+  const estadosSemExterior = (panorama?.estados ?? []).filter((e) => e.uf !== 'zz');
+  const concluidos = estadosSemExterior.filter((e) => (e.pst ?? 0) >= 100).length;
 
   return (
-    <section className="inicio-bloco inicio-placar" aria-labelledby="inicio-placar-titulo">
-      <div className="inicio-bloco-cabecalho">
-        <h2 id="inicio-placar-titulo">Presidente, Brasil</h2>
-        <span className="inicio-status">
-          {erro
-            ? 'Sem conexão'
-            : resultado
-              ? aoVivo ? <><span className="ao-vivo" aria-hidden="true" />Ao vivo</> : `Atualizado ${dataHora(resultado.instante ?? Date.now())}`
-              : 'Carregando…'}
-        </span>
+    <div className="inicio">
+      {mostrarContagem && (
+        <section className="inicio-contagem" aria-live="polite">
+          <p>
+            A totalização começa às 17h (horário de Brasília){faltam && <>, faltam <strong>{faltam}</strong></>}.
+          </p>
+          {cfg && <Avisos uf="br" cargo={1} chave={cfg.chavePush} proporcional={false} />}
+        </section>
+      )}
+
+      {erro && !resultado && (
+        <p className="status status-erro" role="status">Sem conexão com os resultados ({erro}).</p>
+      )}
+
+      <Indicadores resultado={resultado} panorama={panorama} concluidos={concluidos} totalEstados={estadosSemExterior.length} />
+
+      <div className="inicio-grade-2col">
+        <section className="inicio-bloco inicio-placar" aria-labelledby="inicio-placar-titulo">
+          <div className="inicio-bloco-cabecalho">
+            <h2 id="inicio-placar-titulo">Presidente, Brasil</h2>
+            <span className="inicio-status">
+              {erro
+                ? 'Sem conexão'
+                : resultado
+                  ? aoVivo ? <><span className="ao-vivo" aria-hidden="true" />Ao vivo</> : `Atualizado ${dataHora(resultado.instante ?? Date.now())}`
+                  : 'Carregando…'}
+            </span>
+          </div>
+
+          {/* % e barra de seções já aparecem no indicador "Seções totalizadas" logo acima:
+              aqui, repetir seria redundante. Nas telas de disputa (fora do Início) continua. */}
+
+          {resultado && !apuracaoComecou && (
+            <p className="resumo resumo-espera">A totalização ainda não começou nesta disputa.</p>
+          )}
+
+          {resultado && apuracaoComecou && (
+            <ResumoLideranca candidatos={candidatos} vagas={1} proporcional={false} />
+          )}
+
+          {top3.length > 0 && (
+            <ol className="inicio-top3" aria-label="Os 3 mais votados">
+              {top3.map((c) => (
+                <li key={c.numero} className="inicio-top3-item">
+                  <Foto c={c} />
+                  <span className="inicio-top3-texto">
+                    <strong>{c.nome}</strong>
+                    <span>{c.partido}</span>
+                  </span>
+                  <span className="inicio-top3-placar">
+                    <span className="inicio-top3-pct">{pct(c.percentual)}</span>
+                    <span className="inicio-top3-votos">{votos(c.votos)}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+
+          {resultado && (
+            <button type="button" className="estado-cargo-todos" onClick={() => onAbrirDisputa(1, 'br')}>
+              Ver todos os {candidatos.length} candidatos
+            </button>
+          )}
+        </section>
+
+        <section className="inicio-bloco inicio-mapa-mini" aria-labelledby="inicio-mapa-titulo">
+          <div className="inicio-bloco-cabecalho">
+            <h2 id="inicio-mapa-titulo">Totalização por estado</h2>
+            <button type="button" className="inicio-lista-completa" onClick={onAbrirMapa}>Ver mapa</button>
+          </div>
+          {panorama ? (
+            <MapaBrasil estados={panorama.estados} rotuloLider="Presidente" modo="andamento" onSelecionar={onAbrirEstado} />
+          ) : (
+            <p className="resumo-estados">Carregando…</p>
+          )}
+        </section>
       </div>
 
-      {resultado && (
-        <>
-          <p className="andamento-numero">
-            <strong>{pct(resultado.secoesTotalizadas)}</strong> das seções totalizadas
-          </p>
-          <div className="trilho trilho-grande" aria-hidden="true">
-            <div style={{ width: `${resultado.secoesTotalizadas}%` }} />
-          </div>
-        </>
-      )}
+      <div className="inicio-grade-2col">
+        <Evolucao historico={historico} slots={slots}
+          por="hora" onPor={() => {}}
+          ativo={null} onDestacar={() => {}} onFixar={() => {}}
+          tema={tema} referencia50 compacto />
 
-      {resultado && !apuracaoComecou && (
-        <p className="resumo resumo-espera">A apuração ainda não começou nesta disputa.</p>
-      )}
+        <Novidades intervaloMs={intervaloMs} compacto limite={6} onVerTodas={onAbrirNovidades} />
+      </div>
 
-      {resultado && apuracaoComecou && (
-        <ResumoLideranca candidatos={candidatos} vagas={1} proporcional={false} />
-      )}
-
-      {top3.length > 0 && (
-        <ol className="inicio-top3" aria-label="Os 3 mais votados">
-          {top3.map((c) => (
-            <li key={c.numero} className="inicio-top3-item">
-              <Foto c={c} />
-              <span className="inicio-top3-texto">
-                <strong>{c.nome}</strong>
-                <span>{c.partido}</span>
-              </span>
-              <span className="inicio-top3-placar">
-                <span className="inicio-top3-pct">{pct(c.percentual)}</span>
-                <span className="inicio-top3-votos">{votos(c.votos)}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-
-      {resultado && (
-        <button type="button" className="estado-cargo-todos" onClick={() => onAbrirDisputa(1, 'br')}>
-          Ver todos os {candidatos.length} candidatos
-        </button>
-      )}
-    </section>
+      <SeuEstado intervaloMs={intervaloMs} onAbrirEstado={onAbrirEstado} />
+      <PeloPais panorama={panorama} onAbrirEstado={onAbrirEstado} onAbrirPorEstado={onAbrirPorEstado} />
+    </div>
   );
 }
 
-// Bloco 2: "Seu estado" — personalizado, lembrado em localStorage
+// Linha de indicadores: Seções totalizadas, Votos totalizados, Estados concluídos.
+// Antes da totalização os totais vêm zerados: mostra "–" em vez de "0,0 mi" enganoso.
+function Indicadores({ resultado, panorama, concluidos, totalEstados }: {
+  resultado: Resultado | undefined; panorama: Panorama | undefined; concluidos: number; totalEstados: number;
+}) {
+  const totais = resultado?.totais;
+  const temDados = !!totais && totais.votosTotais > 0;
+  const pstBrasil = panorama?.brasil.pst ?? resultado?.secoesTotalizadas ?? null;
+  // "N de M seções": usa o campo exato do TSE (totais.secoesTotalizadas). Só recorre ao
+  // cálculo pelo percentual quando esse campo vier 0 mas o % já indica totalização em
+  // andamento — inconsistência vista apenas no simulador de teste, não no TSE real.
+  const secoesContadas = !totais ? null
+    : totais.secoesTotalizadas > 0 ? totais.secoesTotalizadas
+    : pstBrasil !== null && pstBrasil > 0 ? Math.round((pstBrasil / 100) * totais.secoes)
+    : totais.secoesTotalizadas;
+
+  return (
+    <div className="inicio-indicadores">
+      <div className="indicador indicador-grande">
+        <span className="indicador-rotulo">Seções totalizadas</span>
+        <strong className="indicador-valor">{pstBrasil === null ? '–' : pct(pstBrasil)}</strong>
+        {totais && secoesContadas !== null && (
+          <>
+            <div className="trilho" aria-hidden="true"><div style={{ width: `${pstBrasil ?? 0}%` }} /></div>
+            <span className="indicador-detalhe">{secoesContadas.toLocaleString('pt-BR')} de {totais.secoes.toLocaleString('pt-BR')} seções</span>
+          </>
+        )}
+      </div>
+      <div className="indicador-linha">
+        <div className="indicador">
+          <span className="indicador-rotulo">Votos totalizados</span>
+          <strong className="indicador-valor">{temDados ? votosCompacto(totais.votosTotais) : '–'}</strong>
+          {temDados && <span className="indicador-detalhe">{totais.votosTotais.toLocaleString('pt-BR')}</span>}
+        </div>
+        <div className="indicador">
+          <span className="indicador-rotulo">Comparecimento</span>
+          <strong className="indicador-valor">{temDados && totais.eleitores > 0 ? pct((totais.comparecimento / totais.eleitores) * 100) : '–'}</strong>
+          {temDados && <span className="indicador-detalhe">{totais.comparecimento.toLocaleString('pt-BR')} eleitores</span>}
+        </div>
+        <div className="indicador">
+          <span className="indicador-rotulo">Estados concluídos</span>
+          <strong className="indicador-valor">{panorama ? `${concluidos} / ${totalEstados}` : '–'}</strong>
+          {panorama && (
+            <div className="trilho" aria-hidden="true"><div style={{ width: `${totalEstados ? (concluidos / totalEstados) * 100 : 0}%` }} /></div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// "Seu estado": seletor compacto (não ocupa a tela toda com 27 botões de cara)
 function SeuEstado({ intervaloMs, onAbrirEstado }: { intervaloMs: number; onAbrirEstado: (uf: string) => void }) {
   const [uf, setUf] = useState<string | null>(() => lerEstadoSalvo());
+  const [escolhendo, setEscolhendo] = useState(false);
   const [dados, setDados] = useState<VisaoEstado>();
 
   useEffect(() => {
@@ -233,22 +360,23 @@ function SeuEstado({ intervaloMs, onAbrirEstado }: { intervaloMs: number; onAbri
     return () => { ctrl.abort(); clearTimeout(timer); };
   }, [uf, intervaloMs]);
 
-  const escolher = (u: string) => { setUf(u); salvarEstado(u); setDados(undefined); };
-  const trocar = () => { setUf(null); salvarEstado(null); setDados(undefined); };
+  const escolher = (u: string) => { setUf(u); salvarEstado(u); setDados(undefined); setEscolhendo(false); };
+  const trocar = () => { setEscolhendo(true); };
 
-  if (!uf) {
+  if (!uf || escolhendo) {
     return (
       <section className="inicio-bloco inicio-seu-estado" aria-labelledby="inicio-seu-estado-titulo">
         <h2 id="inicio-seu-estado-titulo">Seu estado</h2>
         <p className="inicio-seu-estado-convite">Escolha seu estado para ver Governador, Senado e Presidente nele.</p>
-        <div className="inicio-grade-ufs" role="list">
-          {Object.keys(NOMES_UF).filter((u) => u !== 'br' && u !== 'zz').sort((a, b) => nome(a).localeCompare(nome(b), 'pt-BR')).map((u) => (
-            <button key={u} type="button" className="inicio-uf-botao" onClick={() => escolher(u)}>
-              <Bandeira uf={u} />
-              <span>{nome(u)}</span>
-            </button>
-          ))}
-        </div>
+        <label className="seletor-uf inicio-seletor-estado">
+          <span className="visualmente-oculto">Escolher estado</span>
+          <select defaultValue="" onChange={(e) => e.target.value && escolher(e.target.value)}>
+            <option value="" disabled>Escolher estado…</option>
+            {Object.keys(NOMES_UF).filter((u) => u !== 'br' && u !== 'zz').sort((a, b) => nome(a).localeCompare(nome(b), 'pt-BR')).map((u) => (
+              <option key={u} value={u}>{nome(u)}</option>
+            ))}
+          </select>
+        </label>
       </section>
     );
   }
@@ -272,13 +400,13 @@ function SeuEstado({ intervaloMs, onAbrirEstado }: { intervaloMs: number; onAbri
       ) : (
         <div className="inicio-seu-estado-resumo">
           {governador && (
-            <ResumoMini titulo="Governador" cargo={governador.cargo} candidatos={governador.candidatos} vagas={1} />
+            <ResumoMini titulo="Governador" candidatos={governador.candidatos} vagas={1} />
           )}
           {senador && (
-            <ResumoMini titulo="Senado" cargo={senador.cargo} candidatos={senador.candidatos} vagas={senador.vagas} />
+            <ResumoMini titulo="Senado" candidatos={senador.candidatos} vagas={senador.vagas} />
           )}
           {presidente && (
-            <ResumoMini titulo="Presidente" cargo={presidente.cargo} candidatos={presidente.candidatos} vagas={1} />
+            <ResumoMini titulo="Presidente" candidatos={presidente.candidatos} vagas={1} />
           )}
         </div>
       )}
@@ -290,10 +418,10 @@ function SeuEstado({ intervaloMs, onAbrirEstado }: { intervaloMs: number; onAbri
   );
 }
 
-function ResumoMini({ titulo, candidatos, vagas }: { titulo: string; cargo: number; candidatos: Candidato[]; vagas: number }) {
+function ResumoMini({ titulo, candidatos, vagas }: { titulo: string; candidatos: Candidato[]; vagas: number }) {
   const comVotos = candidatos.filter((c) => c.votos > 0);
   if (!comVotos.length) return (
-    <p className="inicio-resumo-mini"><strong>{titulo}:</strong> aguardando apuração</p>
+    <p className="inicio-resumo-mini"><strong>{titulo}:</strong> aguardando totalização</p>
   );
   const mostrar = comVotos.slice(0, Math.min(vagas, 2) || 1);
   return (
@@ -309,25 +437,11 @@ function ResumoMini({ titulo, candidatos, vagas }: { titulo: string; cargo: numb
   );
 }
 
-// Bloco 3: "Pelo país" — grade compacta das 27 UFs, líder de Presidente em cada uma
-function PeloPais({ intervaloMs, onAbrirEstado, onAbrirPorEstado }: {
-  intervaloMs: number; onAbrirEstado: (uf: string) => void; onAbrirPorEstado: () => void;
+// "Pelo país": grade compacta das 27 UFs, líder de Presidente em cada uma
+function PeloPais({ panorama, onAbrirEstado, onAbrirPorEstado }: {
+  panorama: Panorama | undefined; onAbrirEstado: (uf: string) => void; onAbrirPorEstado: () => void;
 }) {
-  const [dados, setDados] = useState<Panorama>();
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    const carregar = async () => {
-      clearTimeout(timer);
-      try { setDados(await buscarPanorama(ctrl.signal)); } catch { /* tenta de novo na próxima rodada */ }
-      if (!ctrl.signal.aborted) timer = setTimeout(carregar, intervaloMs);
-    };
-    void carregar();
-    return () => { ctrl.abort(); clearTimeout(timer); };
-  }, [intervaloMs]);
-
-  const todos = dados?.estados ?? [];
+  const todos = panorama?.estados ?? [];
   const exterior = todos.find((e) => e.uf === 'zz');
   const estados = useMemo(() => todos.filter((e) => e.uf !== 'zz').sort((a, b) => nome(a.uf).localeCompare(nome(b.uf), 'pt-BR')), [todos]);
   const concluidos = estados.filter((e) => (e.pst ?? 0) >= 100).length;
@@ -339,7 +453,7 @@ function PeloPais({ intervaloMs, onAbrirEstado, onAbrirPorEstado }: {
         <button type="button" className="inicio-lista-completa" onClick={onAbrirPorEstado}>Lista completa</button>
       </div>
       <p className="resumo-estados">
-        {dados ? `${concluidos} de ${estados.length} estados concluíram a apuração.` : 'Carregando…'}
+        {panorama ? `${concluidos} de ${estados.length} estados concluíram a totalização.` : 'Carregando…'}
       </p>
 
       {estados.length > 0 && (
@@ -361,7 +475,7 @@ function PeloPais({ intervaloMs, onAbrirEstado, onAbrirPorEstado }: {
 
 function QuadradoEstado({ e, onAbrir }: { e: EstadoPanorama; onAbrir: (uf: string) => void }) {
   const pst = e.pst ?? 0;
-  const descricao = `${nome(e.uf)}: ${e.pst === null ? 'sem dados' : `${pct(e.pst)} apurado`}${e.lider ? `, ${e.lider.nome} lidera` : ''}`;
+  const descricao = `${nome(e.uf)}: ${e.pst === null ? 'sem dados' : `${pct(e.pst)} totalizado`}${e.lider ? `, ${e.lider.nome} lidera` : ''}`;
   return (
     <button type="button" className="inicio-quadrado" aria-label={descricao} onClick={() => onAbrir(e.uf)}>
       <Bandeira uf={e.uf} />
@@ -371,3 +485,4 @@ function QuadradoEstado({ e, onAbrir }: { e: EstadoPanorama; onAbrir: (uf: strin
     </button>
   );
 }
+

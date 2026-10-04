@@ -55,9 +55,20 @@ export function notificar(chave: string, dados: { instante: number | null; pst: 
   for (const res of grupo) escrever(res, msg);
 }
 
-// Disputas com alguém assistindo agora: entram no coletor automaticamente
+// Canal global (não é disputa): a linha do tempo de novidades.ts.
+// GET /api/eventos?canal=novidades -> "event: novidade" com o EventoApuracao recém-gravado.
+export const CANAL_NOVIDADES = 'novidades';
+
+export function transmitir(canal: string, evento: string, dados: unknown) {
+  const grupo = assinantes.get(canal);
+  if (!grupo) return;
+  const msg = `event: ${evento}\ndata: ${JSON.stringify(dados)}\n\n`;
+  for (const res of grupo) escrever(res, msg);
+}
+
+// Disputas com alguém assistindo agora: entram no coletor automaticamente (canais globais não)
 export const disputasAssistidas = (): [string, number][] =>
-  [...assinantes.keys()].map((k) => {
+  [...assinantes.keys()].filter((k) => k.includes(':')).map((k) => {
     const [uf, cargo] = k.split(':');
     return [uf!, Number(cargo)];
   });
