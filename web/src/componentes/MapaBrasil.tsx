@@ -1,10 +1,14 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState, useEffect } from 'react';
 import type { EstadoPanorama } from '../../../shared/tipos.ts';
 import { NOMES_UF } from '../../../shared/ufs.ts';
 import { pct } from '../formato.ts';
 import { Bandeira } from './Bandeira.tsx';
 import { Foto } from './Cartao.tsx';
 import { GEOMETRIA_UFS } from './mapa-brasil-geo.ts';
+
+// Em telas de toque não há hover: tocar num estado abre um card (liderança de Presidente) em
+// vez de navegar para a visão do estado. Tocar de novo no mesmo estado (ou fora) fecha o card.
+const EH_TOQUE = typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
 
 // Mapa do Brasil por UF: andamento da totalização ou líder por estado.
 //
@@ -125,7 +129,19 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
   const descId = useId();
   const [focoUf, setFocoUf] = useState<string | null>(null);
   const [dica, setDica] = useState<{ uf: string; x: number; y: number } | null>(null);
+  const [cardUf, setCardUf] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+
+  // Tocar fora do card fecha (tocar em outro estado é tratado pelo clique do próprio estado)
+  useEffect(() => {
+    if (!cardUf) return;
+    const fechar = (ev: PointerEvent) => {
+      const alvo = ev.target as HTMLElement | null;
+      if (alvo && !alvo.closest('.mb-card') && !alvo.closest('.mb-uf')) setCardUf(null);
+    };
+    document.addEventListener('pointerdown', fechar);
+    return () => document.removeEventListener('pointerdown', fechar);
+  }, [cardUf]);
 
   const porUf = useMemo(() => new Map(estados.map((e) => [e.uf, e])), [estados]);
 
@@ -187,26 +203,25 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
       <style>{`
         .mb-wrap {
           --mapa-vazio: var(--contexto);
-          --mapa-f0: #8fb8d2;
-          --mapa-f1: #6ea3c4;
-          --mapa-f2: #4e86ae;
-          --mapa-f3: #2a6490;
-          --mapa-f4: #123850;
           --mapa-sem-cor: var(--contexto);
+          /* tema escuro (referência) */
+          --mapa-f0: #2a5473;
+          --mapa-f1: #356d99;
+          --mapa-f2: #4f8fb8;
+          --mapa-f3: #79b4d2;
+          --mapa-f4: #aedcee;
           position: relative;
           display: flex;
           flex-direction: column;
           gap: 10px;
           container-type: inline-size;
         }
-        @media (prefers-color-scheme: dark) {
-          .mb-wrap {
-            --mapa-f0: #2a5473;
-            --mapa-f1: #356d99;
-            --mapa-f2: #4f8fb8;
-            --mapa-f3: #79b4d2;
-            --mapa-f4: #aedcee;
-          }
+        :root[data-tema="claro"] .mb-wrap {
+          --mapa-f0: #8fb8d2;
+          --mapa-f1: #6ea3c4;
+          --mapa-f2: #4e86ae;
+          --mapa-f3: #2a6490;
+          --mapa-f4: #123850;
         }
         .mb-svg-area { position: relative; width: 100%; }
         .mb-svg { width: 100%; height: auto; display: block; max-height: 520px; margin: 0 auto; }
@@ -284,6 +299,39 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
         .mb-tooltip-lider-nome { font-weight: 600; color: var(--tinta); font-size: .9rem; }
         .mb-tooltip-lider-pct { color: var(--suave); font-size: .82rem; }
         .mb-tooltip-sem-dados { margin-top: 4px; font-size: .85rem; color: var(--suave); }
+        .mb-card {
+          position: absolute;
+          left: 10px; right: 10px; bottom: 10px;
+          background: var(--superficie);
+          border: 1px solid var(--linha);
+          border-radius: var(--raio, 10px);
+          box-shadow: 0 12px 32px rgb(0 0 0 / .28);
+          padding: 12px 14px;
+          z-index: 6;
+        }
+        .mb-card-fechar {
+          position: absolute; top: 8px; right: 8px;
+          border: 0; background: transparent; cursor: pointer;
+          color: var(--suave); font-size: 1rem; line-height: 1; padding: 4px;
+        }
+        .mb-card-fechar:hover { color: var(--tinta); }
+        .mb-card-cabecalho { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--tinta); padding-right: 1.5rem; }
+        .mb-card-cabecalho .bandeira { width: 1.5rem; height: 1rem; }
+        .mb-card-andamento { margin-top: 4px; font-size: .85rem; color: var(--suave); }
+        .mb-card-lider { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+        .mb-card-lider .foto { width: 3rem; height: 3rem; }
+        .mb-card-lider-texto { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+        .mb-card-lider-texto strong { font-weight: 600; color: var(--tinta); }
+        .mb-card-lider-texto > span { color: var(--suave); font-size: .82rem; }
+        .mb-card-lider-placar { font-variant-numeric: tabular-nums; }
+        .mb-card-sem-dados { margin-top: 10px; font-size: .85rem; color: var(--suave); }
+        .mb-card-ver {
+          display: block; width: 100%; margin-top: 10px;
+          font: inherit; font-size: .85rem; color: var(--segundo-turno);
+          background: none; border: 1px solid var(--linha); border-radius: 8px;
+          padding: 7px 10px; cursor: pointer;
+        }
+        .mb-card-ver:hover { background: var(--fundo); }
         .mb-lista-link {
           align-self: flex-start;
           font: inherit;
@@ -332,9 +380,12 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
                   aria-pressed={ehSelecionado}
                   onMouseEnter={(evt) => mostrarDica(g.sigla, evt)}
                   onMouseLeave={() => setDica(null)}
-                  onFocus={(evt) => { setFocoUf(g.sigla); mostrarDica(g.sigla, evt); }}
+                  onFocus={(evt) => { setFocoUf(g.sigla); if (!EH_TOQUE) mostrarDica(g.sigla, evt); }}
                   onBlur={() => setDica(null)}
-                  onClick={() => onSelecionar(g.sigla)}
+                  onClick={() => {
+                    if (EH_TOQUE) setCardUf((atual) => (atual === g.sigla ? null : g.sigla));
+                    else onSelecionar(g.sigla);
+                  }}
                   onKeyDown={(evt) => {
                     if (evt.key === 'Enter' || evt.key === ' ') { evt.preventDefault(); onSelecionar(g.sigla); }
                     else if (evt.key === 'ArrowRight' || evt.key === 'ArrowDown') { evt.preventDefault(); mover(1); }
@@ -396,6 +447,44 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
               ) : (
                 <div className="mb-tooltip-sem-dados">{rotuloLider}: aguardando totalização</div>
               )}
+            </div>
+          );
+        })()}
+
+        {cardUf && (() => {
+          const e = porUf.get(cardUf);
+          const nomeUf = NOMES_UF[cardUf] ?? cardUf.toUpperCase();
+          const vantagem = e?.vantagem;
+          return (
+            <div className="mb-card" role="dialog" aria-label={`Liderança para ${rotuloLider} em ${nomeUf}`}>
+              <button type="button" className="mb-card-fechar" aria-label="Fechar" onClick={() => setCardUf(null)}>✕</button>
+              <div className="mb-card-cabecalho">
+                <Bandeira uf={cardUf} />
+                <span>{nomeUf}</span>
+              </div>
+              <div className="mb-card-andamento">
+                {e?.pst === null || e?.pst === undefined ? 'Sem dados do TSE no momento' : `${pct(e.pst)} das seções totalizadas`}
+              </div>
+              {e?.lider ? (
+                <div className="mb-card-lider">
+                  <Foto c={e.lider} />
+                  <span className="mb-card-lider-texto">
+                    <strong>{e.lider.nome}</strong>
+                    <span>{e.lider.partido}</span>
+                    <span className="mb-card-lider-placar">
+                      {pct(e.lider.percentual)}
+                      {vantagem !== null && vantagem !== undefined && (
+                        <> · {vantagem.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} p.p. à frente</>
+                      )}
+                    </span>
+                  </span>
+                </div>
+              ) : (
+                <div className="mb-card-sem-dados">{rotuloLider}: aguardando totalização</div>
+              )}
+              <button type="button" className="mb-card-ver" onClick={() => onSelecionar(cardUf)}>
+                Ver {nomeUf} completo
+              </button>
             </div>
           );
         })()}

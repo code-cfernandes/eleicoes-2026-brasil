@@ -1,5 +1,6 @@
-/* Tema escuro é a referência visual do projeto ("produto de dados"); o claro continua
-   funcionando via prefers-color-scheme. Ambos revalidados para contraste AA. */
+/* Tema escuro é a referência visual do projeto ("produto de dados"); o claro entra com
+   data-tema="claro" (definido pelo seletor de tema, e no primeiro load segue o sistema).
+   Ambos revalidados para contraste AA. */
 :root {
   --fundo: #0b1020;
   --superficie: #131a2e;
@@ -21,26 +22,24 @@
   --sombra: 0 2px 10px rgb(0 0 0 / .35);
   color-scheme: dark;
 }
-@media (prefers-color-scheme: light) {
-  :root {
-    --fundo: #edf1f3;
-    --superficie: #ffffff;
-    --superficie-alta: #f5f7f9;
-    --tinta: #15212d;
-    --suave: #5a6876;
-    --linha: #d6dee3;
-    --linha-bandeira: rgb(21 33 45 / .22);
-    --verde: #0e7c4a;
-    --vermelho: #c0392b;
-    --eleito: #f2c230;
-    --segundo-turno: #2a78d6;
-    --contexto: #b9c3cb;
-    --ao-vivo: #0e7c4a;
-    --s0: #2a78d6; --s1: #eb6834; --s2: #1baf7a; --s3: #eda100;
-    --s4: #e87ba4; --s5: #008300; --s6: #4a3aa7; --s7: #e34948;
-    --sombra: 0 1px 3px rgb(0 0 0 / .08);
-    color-scheme: light;
-  }
+:root[data-tema="claro"] {
+  --fundo: #edf1f3;
+  --superficie: #ffffff;
+  --superficie-alta: #f5f7f9;
+  --tinta: #15212d;
+  --suave: #5a6876;
+  --linha: #d6dee3;
+  --linha-bandeira: rgb(21 33 45 / .22);
+  --verde: #0e7c4a;
+  --vermelho: #c0392b;
+  --eleito: #f2c230;
+  --segundo-turno: #2a78d6;
+  --contexto: #b9c3cb;
+  --ao-vivo: #0e7c4a;
+  --s0: #2a78d6; --s1: #eb6834; --s2: #1baf7a; --s3: #eda100;
+  --s4: #e87ba4; --s5: #008300; --s6: #4a3aa7; --s7: #e34948;
+  --sombra: 0 1px 3px rgb(0 0 0 / .08);
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; margin: 0; }
@@ -134,6 +133,13 @@ button, input, select { font: inherit; color: inherit; }
   .sidebar-item:hover { background: var(--fundo); color: var(--tinta); }
   .sidebar-item[aria-current="page"] { background: color-mix(in srgb, var(--segundo-turno) 16%, transparent); color: var(--segundo-turno); }
   .sidebar-rodape { display: grid; gap: .6rem; }
+  .sidebar-tema {
+    all: unset; box-sizing: border-box; display: flex; align-items: center; gap: .6rem; width: 100%;
+    padding: .5rem .7rem; border-radius: 8px; cursor: pointer; color: var(--suave); font-size: .8125rem;
+    min-height: 44px;
+  }
+  .sidebar-tema:hover { color: var(--tinta); background: var(--fundo); }
+  .sidebar-recolhida .sidebar-tema { justify-content: center; }
   .sidebar-recolher {
     all: unset; box-sizing: border-box; display: flex; align-items: center; gap: .6rem; width: 100%;
     padding: .5rem .7rem; border-radius: 8px; cursor: pointer; color: var(--suave); font-size: .8125rem;

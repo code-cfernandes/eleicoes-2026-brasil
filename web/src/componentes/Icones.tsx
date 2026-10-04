@@ -168,3 +168,20 @@ export function IconeVoltar({ size = 18 }: Props) {
     </svg>
   );
 }
+
+export function IconeSol({ size = 18 }: Props) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.5v2M12 19.5v2M4.3 4.3l1.4 1.4M18.3 18.3l1.4 1.4M2.5 12h2M19.5 12h2M4.3 19.7l1.4-1.4M18.3 5.7l1.4-1.4" />
+    </svg>
+  );
+}
+
+export function IconeLua({ size = 18 }: Props) {
+  return (
+    <svg {...base} width={size} height={size}>
+      <path d="M20.5 13.5A8.5 8.5 0 1 1 10.5 3.5a7 7 0 0 0 10 10Z" />
+    </svg>
+  );
+}

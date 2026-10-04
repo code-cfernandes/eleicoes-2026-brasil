@@ -16,16 +16,49 @@ export const MAX_SERIES = SERIES.claro.length;
 
 export type Tema = 'claro' | 'escuro';
 
-export function useTema(): Tema {
-  // Padrão escuro: só vira claro se o sistema pedir claro explicitamente
-  const consulta = matchMedia('(prefers-color-scheme: light)');
-  const [tema, setTema] = useState<Tema>(consulta.matches ? 'claro' : 'escuro');
+const CHAVE_TEMA = 'eleicoes2026:tema';
+
+function temaDoSistema(): Tema {
+  return matchMedia('(prefers-color-scheme: light)').matches ? 'claro' : 'escuro';
+}
+
+function lerTemaSalvo(): Tema | null {
+  try {
+    const v = localStorage.getItem(CHAVE_TEMA);
+    return v === 'claro' || v === 'escuro' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+// Tema da interface. Sem preferência salva, segue o sistema (o escuro é a referência).
+// Devolve também a função de alternar, que persiste a escolha no aparelho.
+export function useTema(): [Tema, () => void] {
+  const [tema, setTema] = useState<Tema>(() => lerTemaSalvo() ?? temaDoSistema());
+
   useEffect(() => {
-    const mudou = (e: MediaQueryListEvent) => setTema(e.matches ? 'claro' : 'escuro');
+    document.documentElement.dataset.tema = tema;
+  }, [tema]);
+
+  // Só segue o sistema enquanto a pessoa não escolheu um tema manualmente
+  useEffect(() => {
+    const consulta = matchMedia('(prefers-color-scheme: light)');
+    const mudou = (e: MediaQueryListEvent) => {
+      if (!lerTemaSalvo()) setTema(e.matches ? 'claro' : 'escuro');
+    };
     consulta.addEventListener('change', mudou);
     return () => consulta.removeEventListener('change', mudou);
-  }, [consulta]);
-  return tema;
+  }, []);
+
+  const alternar = () => {
+    setTema((atual) => {
+      const novo: Tema = atual === 'escuro' ? 'claro' : 'escuro';
+      try { localStorage.setItem(CHAVE_TEMA, novo); } catch { /* modo privado: não lembra */ }
+      return novo;
+    });
+  };
+
+  return [tema, alternar];
 }
 
 export const corSerie = (tema: Tema, slot: number | undefined) =>

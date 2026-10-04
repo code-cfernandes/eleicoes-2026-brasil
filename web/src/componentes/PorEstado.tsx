@@ -133,8 +133,14 @@ export function PorEstado({ intervaloMs, onAbrir }: { intervaloMs: number; onAbr
 
   // "Por região" não tem grupo Exterior aqui (ele já tem seção própria depois da lista)
   const regioesDeEstados = REGIOES.filter((r) => r.nome !== 'Exterior');
-  const grupos: { titulo?: string; itens: EstadoPanorama[] }[] = ordem === 'regiao'
-    ? regioesDeEstados.map((r) => ({ titulo: r.nome, itens: estados.filter((e) => r.ufs.includes(e.uf)).sort(porAndamento) }))
+  const grupos: { titulo?: string; itens: EstadoPanorama[]; pstRegiao?: number | null }[] = ordem === 'regiao'
+    ? regioesDeEstados.map((r) => {
+        const itens = estados.filter((e) => r.ufs.includes(e.uf)).sort(porAndamento);
+        const secoes = itens.reduce((s, e) => s + (e.secoes ?? 0), 0);
+        const totalizadas = itens.reduce((s, e) => s + (e.secoesTotalizadas ?? 0), 0);
+        const pstRegiao = secoes > 0 ? (totalizadas / secoes) * 100 : null;
+        return { titulo: r.nome, itens, pstRegiao };
+      })
     : [{ itens: [...estados].sort(ordem === 'nome' ? porNome : porAndamento) }];
 
   return (
@@ -173,8 +179,18 @@ export function PorEstado({ intervaloMs, onAbrir }: { intervaloMs: number; onAbr
       </div>
 
       {grupos.map((g) => (
-        <div key={g.titulo ?? 'todos'} className="estados-grupo">
-          {g.titulo && <h3>{g.titulo}</h3>}
+        <div key={g.titulo ?? 'todos'} className={`estados-grupo${g.pstRegiao !== undefined ? ' estados-grupo-regiao' : ''}`}>
+          {g.titulo && (
+            <div className="estados-grupo-cabecalho">
+              <h3>{g.titulo}</h3>
+              {g.pstRegiao !== undefined && (
+                <span className="estados-grupo-total">{g.pstRegiao === null ? 'sem dados' : `${pct(g.pstRegiao)} apurado`}</span>
+              )}
+            </div>
+          )}
+          {g.pstRegiao !== undefined && (
+            <div className="trilho" aria-hidden="true"><div style={{ width: `${g.pstRegiao ?? 0}%` }} /></div>
+          )}
           <ol className="estados" aria-label={g.titulo ?? 'Estados'}>
             {g.itens.map((e) => <Linha key={e.uf} e={e} onAbrir={onAbrir} />)}
           </ol>

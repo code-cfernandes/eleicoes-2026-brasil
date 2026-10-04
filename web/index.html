@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Apuração 2026</title>
+<script>
+  // Define o tema antes da primeira pintura (sem flash). Sem preferência salva, segue o sistema.
+  (function () {
+    try {
+      var t = localStorage.getItem('eleicoes2026:tema');
+      if (t !== 'claro' && t !== 'escuro') t = matchMedia('(prefers-color-scheme: light)').matches ? 'claro' : 'escuro';
+      document.documentElement.setAttribute('data-tema', t);
+    } catch (e) {
+      document.documentElement.setAttribute('data-tema', matchMedia('(prefers-color-scheme: light)').matches ? 'claro' : 'escuro');
+    }
+  })();
+</script>
 <meta name="description" content="Resultados das eleições 2026 com dados do TSE, atualizados durante a apuração.">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icones/icone-192.png" type="image/png">

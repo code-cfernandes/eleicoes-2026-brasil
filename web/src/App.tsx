@@ -72,7 +72,7 @@ function lerUrl() {
 }
 
 export function App() {
-  const tema = useTema();
+  const [tema, alternarTema] = useTema();
   const [cfg, setCfg] = useState<ConfigPublica>();
   const [{ cargo, uf }, setDisputa] = useState(lerUrl);
   const [ufEstadual, setUfEstadual] = useState(uf === 'br' ? 'sp' : uf);
@@ -259,7 +259,7 @@ export function App() {
   return (
     <div className="layout">
       <SidebarDesktop cargos={cfg?.cargos ?? []} secao={secao} cargoCandidatos={cargo > 0 ? cargo : cfg?.cargos[0]?.codigo ?? 1}
-        onIr={ir} onAbrirCandidatos={abrirCandidatos} />
+        onIr={ir} onAbrirCandidatos={abrirCandidatos} tema={tema} onAlternarTema={alternarTema} />
 
       <main className="conteudo">
         <header className="topo">

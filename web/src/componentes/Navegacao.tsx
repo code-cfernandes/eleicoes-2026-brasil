@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Cargo } from '../../../shared/tipos.ts';
+import type { Tema } from '../paleta.ts';
 import { StatusDados } from './StatusDados.tsx';
 import {
-  IconeCandidatos, IconeDeputado, IconeGovernador, IconeInicio, IconeMais, IconeMapa,
-  IconeNovidades, IconePainel, IconePorEstado, IconePresidente, IconeSenador, IconeSobre,
+  IconeCandidatos, IconeDeputado, IconeGovernador, IconeInicio, IconeLua, IconeMais, IconeMapa,
+  IconeNovidades, IconePainel, IconePorEstado, IconePresidente, IconeSenador, IconeSobre, IconeSol,
 } from './Icones.tsx';
 
 // Navegação principal: sidebar recolhível no desktop (≥1024px), navegação inferior de
@@ -44,13 +45,15 @@ export interface PropsNavegacao {
   cargoCandidatos: number;
   onIr: (s: Secao) => void;
   onAbrirCandidatos: (cargo: number) => void;
+  tema: Tema;
+  onAlternarTema: () => void;
 }
 
 export type Secao = 'inicio' | 'candidatos' | 'mapa' | 'novidades' | 'mais' | 'por-estado' | 'visao-estado' | 'sobre';
 
 // --- Sidebar desktop ---
 
-export function SidebarDesktop({ cargos, secao, cargoCandidatos, onIr, onAbrirCandidatos }: PropsNavegacao) {
+export function SidebarDesktop({ cargos, secao, cargoCandidatos, onIr, onAbrirCandidatos, tema, onAlternarTema }: PropsNavegacao) {
   const [recolhida, setRecolhida] = useState(lerSidebarRecolhida);
   const alternar = () => setRecolhida((r) => { salvarSidebarRecolhida(!r); return !r; });
 
@@ -92,6 +95,12 @@ export function SidebarDesktop({ cargos, secao, cargoCandidatos, onIr, onAbrirCa
       </nav>
 
       <div className="sidebar-rodape">
+        <button type="button" className="sidebar-tema" onClick={onAlternarTema}
+          aria-label={tema === 'escuro' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+          title={tema === 'escuro' ? 'Tema claro' : 'Tema escuro'}>
+          {tema === 'escuro' ? <IconeSol /> : <IconeLua />}
+          {!recolhida && <span>{tema === 'escuro' ? 'Tema claro' : 'Tema escuro'}</span>}
+        </button>
         {!recolhida && <StatusDados compacto />}
         <button type="button" className="sidebar-recolher" onClick={alternar}
           aria-expanded={!recolhida} aria-controls="sidebar-nav-lista" title={recolhida ? 'Expandir menu' : 'Recolher menu'}>

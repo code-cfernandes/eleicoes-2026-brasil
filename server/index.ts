@@ -9,7 +9,7 @@ import { registrar, lerHistorico } from './historico.ts';
 import { fechar } from './banco.ts';
 import { obterFoto } from './fotos.ts';
 import { assinar, CANAL_NOVIDADES, conexoesAbertas, disputasAssistidas, encerrarTodas, notificar } from './eventos.ts';
-import { backfillIA, gerarResumoPeriodico, idMaisRecente, lerNovidades, lerNovidadesAntes, processar, pulsar, redigirComIA } from './novidades.ts';
+import { backfillIA, gerarResumoPeriodico, idMaisRecente, lerNovidades, lerNovidadesAntes, processar, pulsar, reconstruirHistorico, redigirComIA } from './novidades.ts';
 import {
   avaliar, chavePublica, deixarDeSeguir, deixarNovidades, disputasComInscritos, disputasSeguidas, enviar,
   estatisticasPush, inscricaoValida, renovar, seguir, segueNovidades, seguirNovidades,
@@ -373,6 +373,8 @@ async function coletarTudo() {
 }
 
 console.log(`Monitorando ${config.monitorar.length} disputa(s): ${config.monitorar.map((p) => p.join(':')).join(', ')}`);
+// Reconstrói a linha do tempo a partir dos snapshots (uma vez, antes de coletar de novo)
+reconstruirHistorico();
 void coletarTudo();
 const coletor = setInterval(coletarTudo, config.cacheMs);
 
