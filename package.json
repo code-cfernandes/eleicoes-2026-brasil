@@ -1,0 +1,12 @@
+{
+  "name": "apuracao-tse",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning server.js",
+    "eleicoes": "node --env-file-if-exists=.env scripts/listar-eleicoes.js",
+    "simular": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/simular.js"
+  },
+  "dependencies": { "express": "^4.21.0" },
+  "engines": { "node": ">=22.13" }
+}

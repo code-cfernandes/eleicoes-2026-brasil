@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apuração 2026</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --fundo: #eef2f5; --tinta: #1a2433; --suave: #5b6878;
+    --barra: #d5dde4; --verde: #0e7c4a; --eleito: #f2c230;
+    /* Séries do gráfico: paleta categórica validada (CVD) para fundo claro */
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fundo: #141b24; --tinta: #e6ebf0; --suave: #93a1b0; --barra: #26313d; --verde: #2fbf7a;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fundo: #141b24; --tinta: #e6ebf0; --suave: #93a1b0; --barra: #26313d; --verde: #2fbf7a;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { font: 16px/1.5 Barlow, system-ui, sans-serif; background: var(--fundo); color: var(--tinta); }
+  main { max-width: 52rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+  .num { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .filtros { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
+  select { font: inherit; padding: .5rem .75rem; border: 1px solid var(--barra); border-radius: 6px; background: transparent; color: inherit; }
+  select option { background: var(--fundo); }
+  select:focus-visible, button:focus-visible { outline: 2px solid var(--verde); outline-offset: 2px; }
+
+  /* Destaque: andamento da apuração */
+  .apuracao .num { font-size: clamp(3.5rem, 14vw, 6rem); line-height: 1; }
+  .apuracao p { color: var(--suave); }
+  .trilho { height: 10px; background: var(--barra); border-radius: 5px; margin: .75rem 0 2rem; overflow: hidden; }
+  .trilho div { height: 100%; background: var(--verde); transition: width .6s ease; }
+
+  ol { list-style: none; padding: 0; display: grid; gap: 1rem; }
+  .cand header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+  .cand .nome { font-weight: 600; }
+  .cand .pct { font-size: 1.6rem; }
+  .cand small { color: var(--suave); }
+  .cand .trilho { height: 6px; margin: .3rem 0 0; }
+  .cand.eleito .trilho div { background: var(--eleito); }
+  .selo { background: var(--eleito); color: #1a2433; font-size: .8rem; font-weight: 600; padding: 0 .4rem; border-radius: 3px; margin-left: .4rem; }
+  .ponto { display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; margin-right: .4rem; vertical-align: baseline; }
+
+  .evolucao { margin-top: 2.5rem; }
+  .evolucao header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: .75rem; margin-bottom: 1rem; }
+  .evolucao h2 { font-size: 1.1rem; }
+  .evolucao header p { color: var(--suave); font-size: .875rem; }
+  .alternar { display: inline-flex; border: 1px solid var(--barra); border-radius: 6px; overflow: hidden; }
+  .alternar button { font: inherit; font-size: .875rem; padding: .35rem .75rem; border: 0; background: transparent; color: var(--suave); cursor: pointer; }
+  .alternar button[aria-pressed="true"] { background: var(--barra); color: var(--tinta); font-weight: 600; }
+  .grafico { position: relative; height: 20rem; }
+  .vazio { color: var(--suave); font-size: .875rem; padding: 2rem 0; }
+
+  .tabela { overflow-x: auto; margin-top: 1.5rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; white-space: nowrap; }
+  th, td { padding: .4rem .6rem; text-align: right; border-bottom: 1px solid var(--barra); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--suave); font-weight: 600; }
+  td { font-variant-numeric: tabular-nums; }
+  caption { text-align: left; color: var(--suave); font-size: .875rem; padding-bottom: .5rem; }
+
+  #status { color: var(--suave); font-size: .875rem; margin-top: 2rem; }
+  #status.erro { color: #c0392b; }
+  @media (prefers-reduced-motion: reduce) { .trilho div { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="filtros">
+    <select id="cargo" aria-label="Cargo"></select>
+    <select id="uf" aria-label="Abrangência"></select>
+  </div>
+
+  <section class="apuracao">
+    <span class="num" id="pst">–</span>
+    <p>das seções totalizadas · <span id="titulo"></span></p>
+    <div class="trilho"><div id="barra-pst" style="width:0"></div></div>
+  </section>
+
+  <ol id="lista"></ol>
+
+  <section class="evolucao" aria-labelledby="evolucao-titulo">
+    <header>
+      <div>
+        <h2 id="evolucao-titulo">Evolução da apuração</h2>
+        <p id="evolucao-sub">Percentual de votos válidos de cada candidato, hora a hora.</p>
+      </div>
+      <div class="alternar" role="group" aria-label="Granularidade">
+        <button type="button" data-por="hora" aria-pressed="true">Hora a hora</button>
+        <button type="button" data-por="todos" aria-pressed="false">Cada atualização</button>
+      </div>
+    </header>
+    <p class="vazio" id="vazio">O histórico começa a aparecer quando o TSE divulgar as primeiras seções totalizadas.</p>
+    <div class="grafico" id="area-grafico" hidden><canvas id="grafico" role="img" aria-label="Gráfico da evolução do percentual de cada candidato"></canvas></div>
+    <div class="tabela" id="area-tabela" hidden><table id="tabela"></table></div>
+  </section>
+  <p id="status" aria-live="polite">Carregando…</p>
+</main>
+
+<script>
+const UFS = 'ac al ap am ba ce df es go ma mt ms mg pa pb pr pe pi rj rn rs ro rr sc sp se to'.split(' ');
+const $ = (id) => document.getElementById(id);
+const fmt = new Intl.NumberFormat('pt-BR');
+const pct = (v) => `${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const TZ = 'America/Sao_Paulo';
+const fmtHora = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+const fmtDia = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit' });
+let timer, intervalo = 30000, por = 'hora';
+let coresPorNumero = new Map(); // número do candidato -> índice da série (cor acompanha o candidato)
+
+function preencherUFs() {
+  const cargo = Number($('cargo').value);
+  const atual = $('uf').value;
+  const opcoes = (cargo === 1 ? ['br'] : []).concat(UFS); // só presidente tem resultado nacional
+  $('uf').innerHTML = opcoes.map((u) => `<option value="${u}">${u === 'br' ? 'Brasil' : u.toUpperCase()}</option>`).join('');
+  $('uf').value = opcoes.includes(atual) ? atual : opcoes[0];
+}
+
+const cor = (i) => getComputedStyle(document.documentElement).getPropertyValue(`--s${i + 1}`).trim();
+
+function render(d) {
+  $('pst').textContent = `${d.secoesTotalizadas.toLocaleString('pt-BR')}%`;
+  $('barra-pst').style.width = `${d.secoesTotalizadas}%`;
+  $('titulo').textContent = `${d.cargo}, ${d.uf === 'br' ? 'Brasil' : d.uf.toUpperCase()}`;
+  $('lista').innerHTML = d.candidatos.map((c) => {
+    const serie = coresPorNumero.get(c.numero);
+    return `
+    <li class="cand ${c.eleito ? 'eleito' : ''}">
+      <header>
+        <span>${serie !== undefined ? `<span class="ponto" style="background:${cor(serie)}" aria-hidden="true"></span>` : ''}<span class="nome">${esc(c.nome)}</span> <small>${esc(c.numero)}</small>${c.eleito ? '<span class="selo">Eleito</span>' : ''}</span>
+        <span class="num pct">${c.percentual.toLocaleString('pt-BR')}%</span>
+      </header>
+      <small>${fmt.format(c.votos)} votos</small>
+      <div class="trilho"><div style="width:${c.percentual}%"></div></div>
+    </li>`;
+  }).join('');
+}
+
+// Rótulo do eixo X: "18h" (ou "05/10 01h" se a apuração atravessar a meia-noite)
+function rotulo(p, variosDias) {
+  const quando = por === 'hora' ? p.hora : p.instante;
+  const texto = por === 'hora' ? `${fmtHora.format(quando).slice(0, 2)}h` : fmtHora.format(quando);
+  return variosDias ? `${fmtDia.format(quando)} ${texto}` : texto;
+}
+
+let grafico;
+
+function desenharGrafico(h, series, rotulos) {
+  const tinta = getComputedStyle(document.documentElement).getPropertyValue('--suave').trim();
+  const grade = getComputedStyle(document.documentElement).getPropertyValue('--barra').trim();
+  const datasets = series.map((c) => ({
+    label: c.nome,
+    borderColor: cor(coresPorNumero.get(c.numero)),
+    backgroundColor: cor(coresPorNumero.get(c.numero)),
+    data: h.map((s) => s.cand.find((k) => k.numero === c.numero)?.percentual ?? null),
+  }));
+  const pontos = por === 'hora' ? 4 : 0;
+
+  if (grafico) {
+    grafico.data.labels = rotulos;
+    grafico.data.datasets = datasets;
+    grafico.options.elements.point.radius = pontos;
+    grafico.options.plugins.tooltip.callbacks.title = titulo(h);
+    grafico.update();
+    return;
+  }
+  grafico = new Chart($('grafico'), {
+    type: 'line',
+    data: { labels: rotulos, datasets },
+    options: {
+      maintainAspectRatio: false,
+      animation: false,
+      spanGaps: true,
+      elements: { point: { radius: pontos, hoverRadius: 6 }, line: { borderWidth: 2, tension: 0 } },
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { ticks: { color: tinta, maxRotation: 0, autoSkip: true }, grid: { display: false } },
+        y: { ticks: { color: tinta, callback: (v) => `${v}%` }, grid: { color: grade }, border: { display: false } },
+      },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: tinta, boxWidth: 10, boxHeight: 10, usePointStyle: true } },
+        tooltip: {
+          itemSort: (a, b) => b.parsed.y - a.parsed.y,
+          callbacks: { title: titulo(h), label: (c) => ` ${c.dataset.label}: ${pct(c.parsed.y)}` },
+        },
+      },
+    },
+  });
+}
+
+// Título do tooltip: horário exato da totalização e quanto já tinha sido apurado
+const titulo = (h) => (itens) => {
+  const p = h[itens[0].dataIndex];
+  return `Posição às ${fmtHora.format(p.instante)} · ${pct(p.pst)} das seções`;
+};
+
+function desenharTabela(h, series, rotulos) {
+  const linhas = h.map((p, i) => `<tr><td>${rotulos[i]}</td><td>${pct(p.pst)}</td>${
+    series.map((c) => `<td>${(v => v === undefined ? '–' : pct(v))(p.cand.find((k) => k.numero === c.numero)?.percentual)}</td>`).join('')
+  }</tr>`).reverse(); // mais recente primeiro
+  $('tabela').innerHTML = `
+    <caption>${por === 'hora' ? 'Posição ao fim de cada hora' : 'Cada atualização do TSE'} (horário de Brasília)</caption>
+    <thead><tr><th scope="col">Hora</th><th scope="col">Seções</th>${
+      series.map((c) => `<th scope="col"><span class="ponto" style="background:${cor(coresPorNumero.get(c.numero))}" aria-hidden="true"></span>${esc(c.nome)}</th>`).join('')
+    }</tr></thead>
+    <tbody>${linhas.join('')}</tbody>`;
+}
+
+async function atualizarHistorico() {
+  const h = await fetch(`/api/historico?uf=${$('uf').value}&cargo=${$('cargo').value}&por=${por}&top=5`).then((r) => r.json());
+  const tem = h.length > 0;
+  $('vazio').hidden = tem;
+  $('area-grafico').hidden = !tem;
+  $('area-tabela').hidden = !tem;
+  coresPorNumero = new Map();
+  if (!tem) return;
+
+  // Top 5 do momento; a cor segue o número do candidato, não a posição,
+  // então uma virada no placar não troca as cores das linhas.
+  const series = h.at(-1).cand.slice(0, 5);
+  [...series].sort((a, b) => a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }))
+    .forEach((c, i) => coresPorNumero.set(c.numero, i));
+
+  const dias = new Set(h.map((p) => fmtDia.format(p.instante)));
+  const rotulos = h.map((p) => rotulo(p, dias.size > 1));
+  desenharGrafico(h, series, rotulos);
+  desenharTabela(h, series, rotulos);
+}
+
+async function atualizar() {
+  clearTimeout(timer);
+  try {
+    const r = await fetch(`/api/resultado?uf=${$('uf').value}&cargo=${$('cargo').value}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.erro);
+    await atualizarHistorico().catch(() => ($('vazio').hidden = false)); // histórico é opcional
+    render(d); // depois do histórico, para a lista já usar as cores das séries
+    $('status').className = '';
+    $('status').textContent = `Dados do TSE de ${d.atualizadoEm || '—'}. Atualiza sozinho a cada ${intervalo / 1000}s.`;
+  } catch (e) {
+    $('status').className = 'erro';
+    $('status').textContent = `Não foi possível buscar os resultados (${e.message}). Nova tentativa em ${intervalo / 1000}s.`;
+  }
+  timer = setTimeout(atualizar, intervalo);
+}
+
+document.querySelectorAll('.alternar button').forEach((b) => {
+  b.onclick = () => {
+    por = b.dataset.por;
+    document.querySelectorAll('.alternar button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+    $('evolucao-sub').textContent = por === 'hora'
+      ? 'Percentual de votos válidos de cada candidato, hora a hora.'
+      : 'Percentual de votos válidos de cada candidato a cada atualização do TSE.';
+    atualizarHistorico();
+  };
+});
+
+// Troca de tema do sistema: redesenha com as cores do novo modo
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  grafico?.destroy(); grafico = undefined; atualizar();
+});
+
+(async () => {
+  const cfg = await fetch('/api/config').then((r) => r.json());
+  intervalo = cfg.intervaloMs;
+  $('cargo').innerHTML = Object.entries(cfg.cargos).map(([k, v]) => `<option value="${k}">${v.nome}</option>`).join('');
+  preencherUFs();
+  $('cargo').onchange = () => { preencherUFs(); atualizar(); };
+  $('uf').onchange = atualizar;
+  document.addEventListener('visibilitychange', () => !document.hidden && atualizar()); // volta da aba = dado fresco
+  atualizar();
+})();
+</script>
+</body>
+</html>

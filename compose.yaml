@@ -1,0 +1,15 @@
+services:
+  apuracao:
+    build: .
+    env_file: .env
+    environment:
+      HISTORICO_DB: /app/data/eleicoes.db # sempre no volume, independente do .env
+      PORT: 3000
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - dados:/app/data
+    restart: unless-stopped
+
+volumes:
+  dados:
