@@ -187,6 +187,7 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
   }
 
   function mostrarDica(uf: string, evt: React.MouseEvent | React.FocusEvent) {
+    if (EH_TOQUE) return; // no toque, o card substitui o tooltip
     const container = (evt.currentTarget as SVGElement).closest('.mb-wrap') as HTMLElement | null;
     const rectContainer = container?.getBoundingClientRect();
     const rectAlvo = (evt.currentTarget as SVGElement).getBoundingClientRect();
@@ -231,8 +232,8 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
           cursor: pointer;
           transition: filter 120ms ease, stroke-width 120ms ease;
         }
-        .mb-uf:hover, .mb-uf:focus-visible { filter: brightness(1.12); }
-        .mb-uf:focus-visible { outline: none; stroke: var(--tinta); stroke-width: 0.3; }
+        .mb-uf:hover { filter: brightness(1.12); }
+        .mb-uf:focus-visible { outline: none; }
         .mb-uf.mb-selecionado { stroke: var(--tinta); stroke-width: 0.3; }
         @media (prefers-reduced-motion: reduce) {
           .mb-uf { transition: none; }

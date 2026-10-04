@@ -349,9 +349,9 @@ export function App() {
         ) : secao === 'novidades' ? (
           <Novidades intervaloMs={cfg?.intervaloMs ?? 30_000} chave={cfg?.chavePush ?? ''} />
         ) : secao === 'mais' ? (
-          <Mais />
+          <Mais tema={tema} onAlternarTema={alternarTema} />
         ) : secao === 'sobre' ? (
-          <Mais />
+          <Mais tema={tema} onAlternarTema={alternarTema} />
         ) : (<>
 
         <section className="andamento" aria-labelledby="disputa-titulo">
