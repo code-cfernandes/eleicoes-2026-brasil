@@ -1,0 +1,18 @@
+{
+  // Backend: roda direto no Node 24 (type stripping), tsc só verifica tipos
+  "compilerOptions": {
+    "target": "es2024",
+    "lib": ["es2024", "esnext.collection"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true
+  },
+  "include": ["server", "shared", "scripts"]
+}

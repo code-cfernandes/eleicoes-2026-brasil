@@ -1,12 +1,33 @@
 {
   "name": "apuracao-tse",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
-    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning server.js",
-    "eleicoes": "node --env-file-if-exists=.env scripts/listar-eleicoes.js",
-    "simular": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/simular.js"
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning server/index.ts",
+    "dev:api": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --watch server/index.ts",
+    "dev:web": "vite",
+    "build": "tsc -p tsconfig.json && tsc -p web/tsconfig.json && vite build",
+    "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
+    "eleicoes": "node --env-file-if-exists=.env scripts/listar-eleicoes.ts",
+    "simular": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/simular.ts"
   },
-  "dependencies": { "express": "^4.21.0" },
-  "engines": { "node": ">=22.13" }
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.19.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "recharts": "^3.10.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
 }

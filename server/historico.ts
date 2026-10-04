@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { config } from './config.js';
+import { config } from './config.ts';
+import type { PontoHistorico, Resultado } from '../shared/tipos.ts';
 
 mkdirSync(dirname(config.historicoDb), { recursive: true });
 const db = new DatabaseSync(config.historicoDb);
@@ -41,7 +42,7 @@ const inserirVoto = db.prepare(
   'INSERT INTO voto (snapshot_id, numero, nome, votos, percentual) VALUES (?, ?, ?, ?, ?)');
 
 // Grava o resultado se for uma geração nova do TSE (UNIQUE descarta repetidos).
-export function registrar(uf, cargo, d) {
+export function registrar(uf: string, cargo: number, d: Resultado): boolean {
   if (!d.instante) return false;
   db.exec('BEGIN');
   try {
@@ -82,14 +83,18 @@ const topDoSnapshot = db.prepare(
 // Evolução da disputa. por='hora' devolve o último snapshot de cada hora;
 // por='todos' devolve cada geração do TSE. Só os `top` candidatos do snapshot
 // mais recente vêm junto (deputados têm milhares de candidatos).
-export function lerHistorico(uf, cargo, { por = 'hora', top = 10 } = {}) {
-  const pontos = snapshots.all({ uf, cargo, todos: por === 'todos' ? 1 : 0 });
+type LinhaSnapshot = Omit<PontoHistorico, 'cand'> & { id: number };
+type LinhaVoto = PontoHistorico['cand'][number] & { snapshot_id: number };
+
+export function lerHistorico(
+  uf: string, cargo: number, { por = 'hora', top = 10 }: { por?: 'hora' | 'todos'; top?: number } = {},
+): PontoHistorico[] {
+  const pontos = snapshots.all({ uf, cargo, todos: por === 'todos' ? 1 : 0 }) as LinhaSnapshot[];
   if (!pontos.length) return [];
 
-  const numeros = topDoSnapshot.all(pontos.at(-1).id, top).map((r) => r.numero);
-  const porSnapshot = Map.groupBy(
-    votos.all({ ids: JSON.stringify(pontos.map((p) => p.id)), numeros: JSON.stringify(numeros) }),
-    (v) => v.snapshot_id);
+  const numeros = (topDoSnapshot.all(pontos.at(-1)!.id, top) as { numero: string }[]).map((r) => r.numero);
+  const linhas = votos.all({ ids: JSON.stringify(pontos.map((p) => p.id)), numeros: JSON.stringify(numeros) }) as LinhaVoto[];
+  const porSnapshot = Map.groupBy(linhas, (v) => v.snapshot_id);
 
   return pontos.map(({ id, ...p }) => ({
     ...p,

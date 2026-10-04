@@ -4,6 +4,7 @@ services:
     env_file: .env
     environment:
       HISTORICO_DB: /app/data/eleicoes.db # sempre no volume, independente do .env
+      FOTOS_DIR: /app/data/fotos
       PORT: 3000
     ports:
       - "${PORT:-3000}:3000"
