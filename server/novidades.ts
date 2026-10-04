@@ -77,6 +77,9 @@ if (!colunasNovidade.has('ia')) db.exec('ALTER TABLE novidade ADD COLUMN ia INTE
 const sql = {
   inserir: db.prepare(`INSERT OR IGNORE INTO novidade (chave, instante, tipo, uf, cargo, texto, criado_em)
     VALUES (?, ?, ?, ?, ?, ?, ?)`),
+  // Eventos "finais" (conclusão) já nascem com ia=1: são definitivos, não passam pela IA
+  inserirFinal: db.prepare(`INSERT OR IGNORE INTO novidade (chave, instante, tipo, uf, cargo, texto, criado_em, ia)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 1)`),
   ultimoId: db.prepare('SELECT coalesce(max(id), 0) AS id FROM novidade'),
   ultimoDoTipo: db.prepare('SELECT instante FROM novidade WHERE tipo = ? AND cargo = ? ORDER BY id DESC LIMIT 1'),
   ler: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto, ia FROM novidade
@@ -118,11 +121,37 @@ export function quantidadeVotos(n: number): string {
   return `${n.toLocaleString('pt-BR')} ${n === 1 ? 'voto' : 'votos'}`;
 }
 
+// Notícia final de conclusão (100% das seções) com o resultado: quem venceu (ou 2º turno) e os números
+interface CandConclusao { nome: string; votos: number; percentual: number; eleito: boolean; situacao: string }
+
+function conclusaoBrasil(d: { candidatos: CandConclusao[] }): string {
+  const comVotos = d.candidatos.filter((c) => c.votos > 0);
+  const [lider, vice] = comVotos;
+  if (!lider) return 'Brasil concluiu a totalização para Presidente (100% das seções).';
+  const eleito = d.candidatos.find((c) => c.eleito);
+  const segundo = d.candidatos.filter((c) => /2º turno/i.test(c.situacao));
+  if (eleito) {
+    return `Brasil concluiu a totalização para Presidente: ${nome(eleito)} eleito com ${pct(eleito.percentual)} dos votos válidos (${quantidadeVotos(eleito.votos)}).`;
+  }
+  if (segundo.length >= 2) {
+    return `Brasil concluiu a totalização para Presidente: haverá 2º turno entre ${lista(segundo.map(nome))}.`;
+  }
+  const parte = `${nome(lider)} lidera com ${pct(lider.percentual)} dos votos válidos (${quantidadeVotos(lider.votos)})`;
+  return `Brasil concluiu a totalização para Presidente: ${parte}${vice ? `, à frente de ${nome(vice)} (${pct(vice.percentual)})` : ''}.`;
+}
+
+function conclusaoUF(d: { candidatos: CandConclusao[]; uf: string }): string {
+  const [lider, vice] = d.candidatos.filter((c) => c.votos > 0);
+  if (!lider) return `${lugar(d.uf)} concluiu a totalização para Presidente (100% das seções).`;
+  const parte = `${nome(lider)} lidera com ${pct(lider.percentual)} dos votos válidos (${quantidadeVotos(lider.votos)})`;
+  return `${lugar(d.uf)} concluiu a totalização para Presidente: ${parte}${vice ? `, à frente de ${nome(vice)} (${pct(vice.percentual)})` : ''}.`;
+}
+
 // --- Gravação
-interface Novo { chave: string; instante: number; tipo: TipoEvento; uf: string; cargo: number; texto: string }
+interface Novo { chave: string; instante: number; tipo: TipoEvento; uf: string; cargo: number; texto: string; final?: boolean }
 
 function gravar(e: Novo): EventoApuracao | null {
-  const r = sql.inserir.run(e.chave, e.instante, e.tipo, e.uf, e.cargo, e.texto, Date.now());
+  const r = (e.final ? sql.inserirFinal : sql.inserir).run(e.chave, e.instante, e.tipo, e.uf, e.cargo, e.texto, Date.now());
   if (!r.changes) return null;
   const ev: EventoApuracao = { id: Number(r.lastInsertRowid), instante: e.instante, tipo: e.tipo, uf: e.uf, cargo: e.cargo, texto: e.texto };
   ultimoId = Math.max(ultimoId, ev.id);
@@ -174,12 +203,11 @@ export function processar(d: Resultado, deteccoes: Deteccao[]) {
       if (brasilPresidente) {
         novos.push(det.marco === 0
           ? { ...base, chave: 'inicio:br:1', tipo: 'inicio', texto: `A totalização para Presidente começou às ${horaMinuto(instante)}.` }
-          : { ...base, chave: `marco:br:1:${det.marco}`, tipo: 'marco', texto: det.marco === 100
-            ? 'Brasil concluiu a totalização para Presidente (100% das seções).'
-            : `Brasil passou de ${det.marco}% das seções totalizadas para Presidente.` });
+          : det.marco === 100
+            ? { ...base, chave: 'marco:br:1:100', tipo: 'marco', texto: conclusaoBrasil(d), final: true }
+            : { ...base, chave: `marco:br:1:${det.marco}`, tipo: 'marco', texto: `Brasil passou de ${det.marco}% das seções totalizadas para Presidente.` });
       } else if (det.marco === 100) {
-        novos.push({ ...base, chave: `concluido:${uf}:1`, tipo: 'estado-concluido',
-          texto: `${lugar(uf)} concluiu a totalização para Presidente (100% das seções).` });
+        novos.push({ ...base, chave: `concluido:${uf}:1`, tipo: 'estado-concluido', texto: conclusaoUF(d), final: true });
       } else if (MARCOS_UF.includes(det.marco)) {
         novos.push({ ...base, chave: `marco:${uf}:1:${det.marco}`, tipo: 'marco',
           texto: `${lugar(uf)} passou de ${det.marco}% das seções totalizadas para Presidente.` });
@@ -187,7 +215,8 @@ export function processar(d: Resultado, deteccoes: Deteccao[]) {
     }
 
     const viradaConta = brasilPresidente || ((cargo === 3 || cargo === 5) && d.secoesTotalizadas >= PST_MIN_VIRADA_UF);
-    if (det.tipo === 'virada' && viradaConta) {
+    // Depois da conclusão (100%) não há mais virada: a última notícia é a conclusão
+    if (det.tipo === 'virada' && viradaConta && d.secoesTotalizadas < 100) {
       const quem = d.vagas === 1
         ? `${nome(det.entrou)} passou à frente`
         : `${nome(det.entrou)} passou a ocupar uma das ${d.vagas} primeiras posições`;
@@ -215,7 +244,8 @@ export function processar(d: Resultado, deteccoes: Deteccao[]) {
   }
 
   const gravados = novos.length ? transacao(() => novos.map(gravar)) : [];
-  if (brasilPresidente) gravados.push(ritmo(d, instante), diferenca(d, instante));
+  // Depois da conclusão, param o ritmo e a diferença (a conclusão já é a última notícia)
+  if (brasilPresidente && d.secoesTotalizadas < 100) gravados.push(ritmo(d, instante), diferenca(d, instante));
   publicar(gravados);
 }
 
@@ -396,6 +426,9 @@ export function gerarResumoPeriodico() {
     return;
   }
 
+  // Concluído (100%): o balanço periódico para — a conclusão já é a última notícia
+  if (r.pst >= 100) return;
+
   // Balanço periódico: só quando o TSE publicou algo novo desde o último balanço
   const base = lerEstado<{ pst: number; instante: number }>('progresso:br:1');
   if (base && r.instante <= base.instante) return;
@@ -425,7 +458,7 @@ export function reconstruirHistorico() {
 
   const disputas = db.prepare('SELECT DISTINCT uf, cargo FROM snapshot ORDER BY cargo, uf').all() as { uf: string; cargo: number }[];
   const snapsSql = db.prepare('SELECT id, instante, pst FROM snapshot WHERE uf = ? AND cargo = ? AND pst > 0 ORDER BY instante');
-  const topSql = db.prepare('SELECT numero, nome FROM voto WHERE snapshot_id = ? ORDER BY votos DESC LIMIT ?');
+  const topSql = db.prepare('SELECT numero, nome, votos, percentual FROM voto WHERE snapshot_id = ? ORDER BY votos DESC LIMIT ?');
 
   for (const { uf, cargo } of disputas) {
     const cfg = CARGOS[cargo];
@@ -453,16 +486,23 @@ export function reconstruirHistorico() {
         const m = Math.max(-1, ...[25, 50, 75, 90, 100].filter((x) => s.pst >= x));
         if (m > marcoAtual) {
           marcoAtual = m;
-          gravar({ chave: `marco:br:1:${m}`, instante: s.instante, tipo: 'marco', uf: 'br', cargo: 1,
-            texto: m === 100
-              ? 'Brasil concluiu a totalização para Presidente (100% das seções).'
-              : `Brasil passou de ${m}% das seções totalizadas para Presidente.` });
+          if (m === 100) {
+            const cands = (topSql.all(s.id, 2) as { nome: string; votos: number; percentual: number }[])
+              .map((c) => ({ nome: c.nome, votos: c.votos, percentual: c.percentual, eleito: false, situacao: '' }));
+            gravar({ chave: 'marco:br:1:100', instante: s.instante, tipo: 'marco', uf: 'br', cargo: 1,
+              texto: conclusaoBrasil({ candidatos: cands }), final: true });
+          } else {
+            gravar({ chave: `marco:br:1:${m}`, instante: s.instante, tipo: 'marco', uf: 'br', cargo: 1,
+              texto: `Brasil passou de ${m}% das seções totalizadas para Presidente.` });
+          }
         }
       }
 
       if (cargo === 1 && !brasil && uf !== 'zz' && s.pst >= 100) {
+        const cands = (topSql.all(s.id, 2) as { nome: string; votos: number; percentual: number }[])
+          .map((c) => ({ nome: c.nome, votos: c.votos, percentual: c.percentual, eleito: false, situacao: '' }));
         gravar({ chave: `concluido:${uf}:1`, instante: s.instante, tipo: 'estado-concluido', uf, cargo: 1,
-          texto: `${lugar(uf)} concluiu a totalização para Presidente (100% das seções).` });
+          texto: conclusaoUF({ candidatos: cands, uf }), final: true });
         break;
       }
 

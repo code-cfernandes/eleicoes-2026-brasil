@@ -494,7 +494,7 @@ button, input, select { font: inherit; color: inherit; }
 .regiao-card .trilho { margin-top: .5rem; }
 .regiao-ufs { list-style: none; padding: 0; margin-top: .5rem; display: grid; gap: .1rem; }
 .regiao-uf {
-  all: unset; box-sizing: border-box; display: grid; grid-template-columns: auto 1fr 3.5rem auto; align-items: center;
+  all: unset; box-sizing: border-box; display: grid; grid-template-columns: auto 1fr 3.5rem auto auto; align-items: center;
   gap: .5rem; width: 100%; padding: .28rem .3rem; cursor: pointer; border-radius: 6px; min-height: 32px;
 }
 .regiao-uf:hover { background: var(--fundo); }
@@ -504,6 +504,9 @@ button, input, select { font: inherit; color: inherit; }
 .regiao-uf-trilho { display: block; width: 100%; height: 4px; background: var(--linha); border-radius: 2px; overflow: hidden; }
 .regiao-uf-trilho > span { display: block; height: 100%; background: var(--verde); }
 .regiao-uf-pct { font-size: .75rem; font-variant-numeric: tabular-nums; text-align: right; min-width: 3.25rem; }
+.regiao-uf .foto { width: 1.5rem; height: 1.5rem; }
+.regiao-uf .foto-vazia { font-size: .6rem; }
+.regiao-uf-vazio { width: 1.5rem; height: 1.5rem; }
 
 .inicio-exterior-linha {
   display: flex; align-items: center; gap: .5rem; margin-top: .9rem; padding-top: .75rem;

@@ -83,17 +83,17 @@ export function resumoAtual(uf: string, cargo: number): ResumoAtual | null {
   return { ...s, top };
 }
 
-// Hora "cheia" de Brasília (UTC-3, sem horário de verão) de cada snapshot.
-const HORA = '((instante / 1000 - 10800) / 3600)';
+// Faixa de 10 minutos (Brasília, UTC-3, sem horário de verão) de cada snapshot.
+const FAIXA = '((instante / 1000 - 10800) / 600)';
 
 const snapshots = db.prepare(`
-  SELECT id, tse_em AS em, instante, pst, ${HORA} * 3600000 + 10800000 AS hora
+  SELECT id, tse_em AS em, instante, pst, ${FAIXA} * 600000 + 10800000 AS hora
   FROM (
-    SELECT *, ROW_NUMBER() OVER (PARTITION BY ${HORA} ORDER BY instante DESC) AS ultimo_da_hora
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY ${FAIXA} ORDER BY instante DESC) AS ultimo_da_faixa
     FROM snapshot
     WHERE uf = :uf AND cargo = :cargo AND pst > 0
   )
-  WHERE (:todos OR ultimo_da_hora = 1) AND instante > :desde
+  WHERE (:todos OR ultimo_da_faixa = 1) AND instante > :desde
   ORDER BY instante`);
 
 const maisRecente = db.prepare(
@@ -108,11 +108,11 @@ const votos = db.prepare(`
 const topDoSnapshot = db.prepare(
   'SELECT numero FROM voto WHERE snapshot_id = ? ORDER BY votos DESC LIMIT ?');
 
-// Evolução da disputa. por='hora' devolve o último snapshot de cada hora;
+// Evolução da disputa. por='hora' devolve o último snapshot de cada faixa de 10 minutos;
 // por='todos' devolve cada geração do TSE. Só os `top` candidatos do snapshot
 // mais recente vêm junto (deputados têm milhares de candidatos).
 // Com `desde` (instante do último ponto que o cliente já tem) vêm só os pontos novos;
-// no modo hora, o ponto da hora corrente volta sempre que é substituído por um mais novo.
+// no modo faixa, o ponto da faixa corrente volta sempre que é substituído por um mais novo.
 type LinhaSnapshot = Omit<PontoHistorico, 'cand'> & { id: number };
 type LinhaVoto = PontoHistorico['cand'][number] & { snapshot_id: number };
 

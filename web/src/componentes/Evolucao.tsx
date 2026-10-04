@@ -21,7 +21,7 @@ interface Props {
   /** Presidente/Governador: mostra a referência de 50% dos votos válidos (maioria no 1º turno) */
   referencia50?: boolean;
   /** Versão reduzida para caber lado a lado com outro bloco (Início, desktop): gráfico mais
-   * baixo e sem a alternância hora-a-hora/cada atualização (quem quiser o gráfico completo
+   * baixo e sem a alternância 10 min/cada atualização (quem quiser o gráfico completo
    * abre a disputa). */
   compacto?: boolean;
 }
@@ -29,7 +29,7 @@ interface Props {
 type Linha = { rotulo: string; instante: number; pst: number } & Record<string, number | string>;
 
 function rotular(p: PontoHistorico, por: Granularidade, variosDias: boolean) {
-  const texto = por === 'hora' ? `${horaMinuto(p.hora).slice(0, 2)}h` : horaMinuto(p.instante);
+  const texto = por === 'hora' ? horaMinuto(p.hora) : horaMinuto(p.instante);
   return variosDias ? `${diaMes(p.instante)} ${texto}` : texto;
 }
 
@@ -91,11 +91,11 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
       <header className="evolucao-cabecalho">
         <div>
           <h2 id="evolucao-titulo">Evolução da totalização</h2>
-          <p>Percentual de votos válidos de cada candidato {por === 'hora' ? 'ao fim de cada hora' : 'a cada atualização do TSE'}.</p>
+          <p>Percentual de votos válidos de cada candidato {por === 'hora' ? 'a cada 10 minutos' : 'a cada atualização do TSE'}.</p>
         </div>
         {!compacto && (
           <div className="alternar" role="group" aria-label="Frequência dos pontos">
-            <button type="button" aria-pressed={por === 'hora'} onClick={() => onPor('hora')}>Hora a hora</button>
+            <button type="button" aria-pressed={por === 'hora'} onClick={() => onPor('hora')}>A cada 10 min</button>
             <button type="button" aria-pressed={por === 'todos'} onClick={() => onPor('todos')}>Cada atualização</button>
           </div>
         )}
@@ -170,7 +170,7 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
             <summary>Ver os números em tabela</summary>
             <div className="tabela-rolagem">
               <table>
-                <caption>{por === 'hora' ? 'Posição ao fim de cada hora' : 'Cada atualização do TSE'}, horário de Brasília</caption>
+                <caption>{por === 'hora' ? 'Posição a cada 10 minutos' : 'Cada atualização do TSE'}, horário de Brasília</caption>
                 <thead>
                   <tr>
                     <th scope="col">Hora</th>

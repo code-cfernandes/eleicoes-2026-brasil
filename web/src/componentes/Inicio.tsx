@@ -499,12 +499,13 @@ function CardRegiao({ nome: nomeRegiao, estados, onAbrir }: { nome: string; esta
         {estados.map((e) => (
           <li key={e.uf}>
             <button type="button" className="regiao-uf"
-              aria-label={`${nome(e.uf)}: ${e.pst === null ? 'sem dados' : `${pct(e.pst)} totalizado`}`}
+              aria-label={`${nome(e.uf)}: ${e.pst === null ? 'sem dados' : `${pct(e.pst)} totalizado`}${e.lider ? `, ${e.lider.nome} lidera` : ''}`}
               onClick={() => onAbrir(e.uf)}>
               <Bandeira uf={e.uf} />
               <span className="regiao-uf-nome">{nome(e.uf)}</span>
               <span className="regiao-uf-trilho" aria-hidden="true"><span style={{ width: `${e.pst ?? 0}%` }} /></span>
               <span className="regiao-uf-pct">{e.pst === null ? '–' : pct(e.pst)}</span>
+              {e.lider ? <Foto c={e.lider} /> : <span className="regiao-uf-vazio" aria-hidden="true" />}
             </button>
           </li>
         ))}

@@ -57,7 +57,7 @@ export interface PontoHistorico {
   em: string;
   /** epoch ms da geração do TSE */
   instante: number;
-  /** epoch ms do início da hora (Brasília) */
+  /** epoch ms do início da faixa de 10 minutos (Brasília) */
   hora: number;
   pst: number;
   cand: { numero: string; nome: string; votos: number; percentual: number }[];

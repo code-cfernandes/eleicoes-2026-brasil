@@ -23,7 +23,7 @@ export const buscarHistorico = (
 ) => json<RespostaHistorico>(
   `/api/historico?uf=${uf}&cargo=${cargo}&por=${por}&top=${top}&desde=${desde}${so ? `&so=${so.join(',')}` : ''}`, signal);
 
-// Junta os pontos novos aos que já estão na tela. No modo hora, o ponto da hora
+// Junta os pontos novos aos que já estão na tela. No modo faixa (10 min), o ponto da faixa
 // corrente é substituído pelo mais novo (mesma chave `hora`).
 export function mesclarHistorico(atual: PontoHistorico[], novos: PontoHistorico[], por: 'hora' | 'todos') {
   if (!novos.length) return atual;

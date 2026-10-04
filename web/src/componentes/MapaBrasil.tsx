@@ -83,6 +83,10 @@ const PEQUENAS_OFFSET: Record<string, { dx: number; dy: number }> = {
 const MARCADOR_RAIO = 1.3;
 const MARCADOR_FOLGA = 0.6;
 
+// Foto do líder (modo 'lider'): círculo ao lado da sigla/marcador do estado
+const FOTO_RAIO = 1.6;
+const FOTO_OFFSET = 3.0;
+
 // UFs com área grande o bastante para o rótulo de sigla caber dentro do contorno
 const SIGLA_DENTRO = new Set(['am', 'pa', 'mt', 'ms', 'go', 'ba', 'mg', 'sp', 'rs', 'to', 'pi', 'ma', 'ac', 'ro', 'rr', 'ap', 'pr', 'sc']);
 
@@ -127,6 +131,7 @@ const ORDEM_TECLADO = [...GEOMETRIA_UFS].map((u) => u.sigla).sort((a, b) => {
 export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCandidato, selecionado, onSelecionar, verComoLista }: Props) {
   const titleId = useId();
   const descId = useId();
+  const fotoClipId = useId();
   const [focoUf, setFocoUf] = useState<string | null>(null);
   const [dica, setDica] = useState<{ uf: string; x: number; y: number } | null>(null);
   const [cardUf, setCardUf] = useState<string | null>(null);
@@ -359,6 +364,12 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
           <title id={titleId}>Mapa do Brasil por estado</title>
           <desc id={descId}>{descricaoGeral}</desc>
 
+          <defs>
+            <clipPath id={fotoClipId}>
+              <circle cx={0} cy={0} r={1} />
+            </clipPath>
+          </defs>
+
           {/* Camada 1: contornos das UFs + siglas internas (ordem alfabética do módulo de geometria) */}
           {GEOMETRIA_UFS.map((g) => {
             const offset = PEQUENAS_OFFSET[g.sigla];
@@ -420,6 +431,23 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
                 <text x={mx} y={my} className="mb-rotulo-pequeno mb-marcador-interno">
                   {g.sigla.toUpperCase()}
                 </text>
+              </g>
+            );
+          })}
+
+          {/* Camada 3 (modo 'lider'): foto do líder ao lado da sigla de cada estado */}
+          {modo === 'lider' && GEOMETRIA_UFS.map((g) => {
+            const e = porUf.get(g.sigla);
+            if (!e?.lider?.foto) return null;
+            const offset = PEQUENAS_OFFSET[g.sigla];
+            const px = (offset ? g.cx + offset.dx : g.cx) - FOTO_OFFSET;
+            const py = offset ? g.cy + offset.dy : g.cy;
+            return (
+              <g key={`foto-${g.sigla}`} transform={`translate(${px} ${py}) scale(${FOTO_RAIO})`}
+                pointerEvents="none" aria-hidden="true">
+                <circle cx={0} cy={0} r={1.08} fill="var(--superficie)" stroke="var(--linha)" strokeWidth={0.08} />
+                <image href={e.lider.foto} x={-1} y={-1} width={2} height={2}
+                  clipPath={`url(#${fotoClipId})`} preserveAspectRatio="xMidYMid slice" />
               </g>
             );
           })}
