@@ -67,14 +67,34 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Andamento da apuração */
 .andamento { margin-bottom: 2rem; }
+.andamento-cabecalho { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1.5rem; }
 .andamento h2 { font: 700 clamp(1.75rem, 5vw, 2.75rem)/1.05 'Barlow Condensed', sans-serif; }
-.andamento-numero { color: var(--suave); margin-top: .5rem; }
+.andamento-numero { color: var(--suave); }
 .andamento-numero strong { color: var(--tinta); font: 700 1.25rem 'Barlow Condensed', sans-serif; font-variant-numeric: tabular-nums; }
 .andamento-detalhe { color: var(--suave); font-size: .875rem; margin-top: .5rem; max-width: 60ch; }
-.trilho { display: block; height: 6px; background: var(--linha); border-radius: 3px; overflow: hidden; }
-.trilho > * { display: block; height: 100%; background: var(--verde); border-radius: 3px; transition: width .6s ease; }
+.trilho { display: block; position: relative; height: 6px; background: var(--linha); border-radius: 3px; }
+.trilho > :first-child { display: block; height: 100%; background: var(--verde); border-radius: 3px; transition: width .6s ease; }
 .trilho-grande { height: 10px; margin-top: .6rem; }
-.trilho-grande > * { background: var(--verde); }
+.trilho-grande > :first-child { background: var(--verde); }
+.trilho-marca {
+  position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--tinta); opacity: .35;
+  transform: translateX(-1px);
+}
+
+/* Resumo da liderança: a informação mais importante da tela, logo no topo */
+.resumo { margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--linha); }
+.resumo-espera { color: var(--suave); font-size: .9375rem; max-width: 50ch; }
+.resumo-estado { margin-bottom: .4rem; }
+.resumo-tag {
+  display: inline-flex; align-items: center; font-size: .8125rem; font-weight: 600;
+  padding: .15rem .6rem; border-radius: 999px;
+}
+.resumo-tag-andamento { background: color-mix(in srgb, var(--verde) 16%, transparent); color: var(--verde); }
+.resumo-tag-segundo-turno { background: color-mix(in srgb, var(--segundo-turno) 16%, transparent); color: var(--segundo-turno); }
+.resumo-tag-eleito { background: var(--eleito); color: #1a2433; }
+.resumo-lider { font-size: 1.0625rem; max-width: 62ch; }
+.resumo-lider strong { font-weight: 700; }
+.resumo-corte { color: var(--suave); font-size: .875rem; margin-top: .35rem; }
 
 /* Avisos (notificações push) */
 .avisos { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem; margin-top: 1rem; }
@@ -106,6 +126,12 @@ button, input, select { font: inherit; color: inherit; }
 .cartao-eleito { border-color: var(--eleito); box-shadow: inset 0 0 0 1px var(--eleito); }
 .cartao-ativo { border-color: var(--tinta); }
 .cartao-esmaecido { opacity: .55; }
+/* Hierarquia: os primeiros colocados pedem mais presença que a cauda longa */
+.cartao-destaque { background: var(--superficie-realce, var(--superficie)); box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
+.cartao-destaque .cartao-pct { font-size: 2.75rem; }
+.cartao-destaque .foto, .cartao-destaque .foto-vazia { width: 3.75rem; height: 3.75rem; }
+.cartao-sem-votos { opacity: .72; }
+.cartao-sem-votos .cartao-pct { color: var(--suave); font-size: 1.5rem; }
 
 .cartao-topo { display: flex; align-items: center; gap: .75rem; }
 .foto {
@@ -132,6 +158,7 @@ button, input, select { font: inherit; color: inherit; }
 .selo-eleito { background: var(--eleito); color: #1a2433; }
 .selo-segundo-turno { border: 1.5px solid var(--segundo-turno); color: var(--segundo-turno); }
 .selo-neutro { border: 1px solid var(--linha); color: var(--suave); }
+.selo-vaga { border: 1px solid var(--verde); color: var(--verde); }
 
 .mais {
   display: block; margin: 1rem auto 0; padding: .55rem 1.25rem; border: 1px solid var(--linha);
@@ -182,17 +209,22 @@ thead th { color: var(--suave); font-weight: 600; }
 thead th .ponto { margin-right: .35rem; }
 tbody th { font-weight: 500; }
 
-.rodape { color: var(--suave); font-size: .8125rem; margin-top: 2rem; }
+.rodape { color: var(--suave); font-size: .8125rem; margin-top: 2rem; display: grid; gap: .35rem; }
+.rodape a { color: var(--tinta); text-decoration: underline; text-underline-offset: 2px; }
+.rodape a:hover { color: var(--verde); }
 
 @media (max-width: 40rem) {
   .cargos { flex-wrap: wrap; flex-basis: 100%; }
   .cartoes { grid-template-columns: 1fr; gap: .5rem; }
   .cartao-botao, .cartao:not(:has(.cartao-botao)) { padding: .75rem; gap: .35rem; }
   .cartao-pct { font-size: 1.75rem; }
+  .cartao-destaque .cartao-pct { font-size: 2.1rem; }
+  .cartao-destaque .foto, .cartao-destaque .foto-vazia { width: 3.1rem; height: 3.1rem; }
   .foto { width: 2.75rem; height: 2.75rem; }
   .grafico { height: 18rem; }
   .evolucao { padding: 1rem .5rem .75rem; }
   .evolucao-cabecalho { padding: 0 .5rem; }
+  .resumo-lider { font-size: .9375rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   .trilho > *, .cartao { transition: none; }

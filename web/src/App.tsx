@@ -4,7 +4,7 @@ import { ajustarCandidatos, buscarConfig, buscarHistorico, buscarResultado, mesc
 import { Avisos } from './componentes/Avisos.tsx';
 import { Cartao } from './componentes/Cartao.tsx';
 import { Evolucao, type Granularidade } from './componentes/Evolucao.tsx';
-import { horaMinuto, pct, semAcento } from './formato.ts';
+import { dataHora, horaDoAparelho, pct, pontos, semAcento, votos } from './formato.ts';
 import { corSerie, MAX_SERIES, useTema } from './paleta.ts';
 import { NOMES_UF } from '../../shared/ufs.ts';
 
@@ -29,6 +29,7 @@ export function App() {
   const [historico, setHistorico] = useState<PontoHistorico[]>([]);
   const [erro, setErro] = useState<string>();
   const [aoVivo, setAoVivo] = useState(false);
+  const [verificadoEm, setVerificadoEm] = useState<number>(); // última consulta bem-sucedida (relógio do aparelho)
   const [busca, setBusca] = useState('');
   const [limite, setLimite] = useState(POR_PAGINA);
   const [destacado, setDestacado] = useState<string | null>(null);
@@ -96,6 +97,7 @@ export function App() {
           }
         }
         setErro(undefined);
+        setVerificadoEm(Date.now());
       } catch (e) {
         if (!ctrl.signal.aborted) setErro((e as Error).message);
       } finally {
@@ -167,6 +169,18 @@ export function App() {
   const local = NOMES_UF[uf] ?? uf.toUpperCase();
   const vagas = resultado?.vagas ?? 1;
 
+  // Resumo da liderança: só faz sentido com apuração em andamento e alguém com voto
+  const apuracaoComecou = (resultado?.secoesTotalizadas ?? 0) > 0 && candidatos.some((c) => c.votos > 0);
+  const comVotos = candidatos.filter((c) => c.votos > 0);
+  const proporcional = !!cargoAtual?.proporcional;
+  const [lider, vice] = comVotos;
+  const indefinido = resultado ? !candidatos.some((c) => c.eleito || /2º turno/i.test(c.situacao || '')) : true;
+  // Senador etc.: vaga é por posição no placar (não proporcional); deputados nunca "entram" só pela posição.
+  // O que interessa é a distância entre a última vaga e o primeiro de fora.
+  const dentro = !proporcional && vagas > 1 ? comVotos.slice(0, vagas) : [];
+  const ultimaVaga = dentro.at(-1);
+  const primeiroFora = dentro.length === vagas ? comVotos[vagas] : undefined;
+
   return (
     <main>
       <header className="topo">
@@ -175,9 +189,13 @@ export function App() {
           {erro
             ? `Sem conexão com os resultados (${erro}). Nova tentativa em ${(cfg?.intervaloMs ?? 30000) / 1000}s.`
             : resultado?.instante
-              ? aoVivo
-                ? <><span className="ao-vivo" aria-hidden="true" />Ao vivo. TSE atualizou às {horaMinuto(resultado.instante)}</>
-                : <>TSE atualizou às {horaMinuto(resultado.instante)}. Conferindo a cada {(cfg?.intervaloMs ?? 30000) / 1000}s</>
+              ? resultado.secoesTotalizadas === 0
+                // Antes da apuração o arquivo do TSE tem horário de dias atrás (e diferente por disputa):
+                // o que interessa é quando o site conferiu pela última vez, no relógio do aparelho.
+                ? <>{aoVivo && <span className="ao-vivo" aria-hidden="true" />}Aguardando o início da apuração, às 17h (horário de Brasília).{verificadoEm && ` Verificado às ${horaDoAparelho(verificadoEm)}`}</>
+                : aoVivo
+                  ? <><span className="ao-vivo" aria-hidden="true" />Ao vivo. TSE atualizou {dataHora(resultado.instante)}</>
+                  : <>TSE atualizou {dataHora(resultado.instante)}. Conferindo a cada {(cfg?.intervaloMs ?? 30000) / 1000}s</>
               : 'Carregando…'}
         </p>
       </header>
@@ -200,10 +218,12 @@ export function App() {
       </nav>
 
       <section className="andamento" aria-labelledby="disputa-titulo">
-        <h2 id="disputa-titulo">{cargoAtual?.nome ?? '…'}, {local}</h2>
-        <p className="andamento-numero">
-          <strong>{resultado ? pct(resultado.secoesTotalizadas) : '–'}</strong> das seções totalizadas
-        </p>
+        <div className="andamento-cabecalho">
+          <h2 id="disputa-titulo">{cargoAtual?.nome ?? '…'}, {local}</h2>
+          <p className="andamento-numero">
+            <strong>{resultado ? pct(resultado.secoesTotalizadas) : '–'}</strong> das seções totalizadas
+          </p>
+        </div>
         <div className="trilho trilho-grande" aria-hidden="true">
           <div style={{ width: `${resultado?.secoesTotalizadas ?? 0}%` }} />
         </div>
@@ -211,9 +231,66 @@ export function App() {
           <p className="andamento-detalhe">
             {candidatos.length} candidatos
             {vagas > 1 ? `, ${vagas} vagas` : ', 1 vaga'}
-            {cargoAtual?.proporcional && '. Deputados são eleitos pelo quociente partidário, não só pelos mais votados'}
+            {proporcional && '. Deputados são eleitos pelo quociente partidário: a ordem da lista não define quem entra'}
           </p>
         )}
+
+        {resultado && !apuracaoComecou && (
+          <p className="resumo resumo-espera">
+            A apuração desta disputa ainda não começou. Os números aparecem assim que o TSE totalizar as primeiras seções.
+          </p>
+        )}
+
+        {resultado && apuracaoComecou && lider && (
+          <div className="resumo" aria-live="polite">
+            <p className="resumo-estado">
+              {candidatos.find((c) => c.eleito)
+                ? <span className="resumo-tag resumo-tag-eleito">Resultado definido</span>
+                : candidatos.some((c) => /2º turno/i.test(c.situacao || ''))
+                  ? <span className="resumo-tag resumo-tag-segundo-turno">Vai para o 2º turno</span>
+                  : <span className="resumo-tag resumo-tag-andamento">Em apuração</span>}
+            </p>
+            {proporcional ? (
+              // Eleição proporcional: não existe "disputa" entre o 1º e o 2º da lista
+              <p className="resumo-lider">
+                <strong>{lider.nome}</strong> ({lider.partido}) é quem tem mais votos até agora, com <strong>{pct(lider.percentual)}</strong>.
+              </p>
+            ) : vagas > 1 ? (
+              <>
+                <p className="resumo-lider">
+                  Nas {vagas} vagas agora:{' '}
+                  {dentro.map((c, i) => (
+                    <span key={c.numero}>
+                      {i > 0 && (i === dentro.length - 1 ? ' e ' : ', ')}
+                      <strong>{c.nome}</strong> ({pct(c.percentual)})
+                    </span>
+                  ))}.
+                </p>
+                {ultimaVaga && primeiroFora && (
+                  <p className="resumo-corte">
+                    {primeiroFora.nome}, em {vagas + 1}º, está a {pontos(ultimaVaga.percentual - primeiroFora.percentual)} da
+                    última vaga ({votos(ultimaVaga.votos - primeiroFora.votos)}).
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="resumo-lider">
+                {vice && lider.votos === vice.votos ? (
+                  <><strong>{lider.nome}</strong> e <strong>{vice.nome}</strong> estão empatados, com {pct(lider.percentual)}.</>
+                ) : (
+                  <>
+                    <strong>{lider.nome}</strong> ({lider.partido}) lidera com <strong>{pct(lider.percentual)}</strong>
+                    {vice && <>, {pontos(lider.percentual - vice.percentual)} à frente de <strong>{vice.nome}</strong> ({vice.partido}), {votos(lider.votos - vice.votos)} de diferença</>}.
+                  </>
+                )}
+                {indefinido && (lider.percentual > 50
+                  ? ' Com mais da metade dos votos válidos, vence no 1º turno se mantiver a vantagem.'
+                  : ` Para vencer no 1º turno é preciso mais da metade dos votos válidos: faltam ${pontos(50 - lider.percentual)}.`)}
+              </p>
+            )}
+          </div>
+        )}
+
         {cfg && cargoAtual?.ufs.includes(uf) && (
           <Avisos uf={uf} cargo={cargo} chave={cfg.chavePush} proporcional={cargoAtual.proporcional} />
         )}
@@ -231,12 +308,16 @@ export function App() {
       )}
 
       <ol className="cartoes" aria-label="Candidatos, do mais votado ao menos votado">
-        {visiveis.map((c) => (
+        {visiveis.map((c, i) => (
           <Cartao key={c.numero} c={c}
             cor={corSerie(tema, slots.get(c.numero))}
             noGrafico={noGrafico.has(c.numero)}
             ativo={ativo === c.numero}
             esmaecido={ativo !== null && ativo !== c.numero}
+            destaque={apuracaoComecou && !termo && i < 3}
+            apuracaoComecou={apuracaoComecou}
+            dentroDasVagas={!termo && !proporcional && vagas > 1 && c.votos > 0 && i < vagas}
+            referencia50={!proporcional && vagas === 1}
             onDestacar={setDestacado} onFixar={fixar} />
         ))}
       </ol>
@@ -248,10 +329,19 @@ export function App() {
       )}
 
       <Evolucao historico={historico} slots={slots} por={por} onPor={setPor}
-        ativo={ativo} onDestacar={setDestacado} onFixar={fixar} tema={tema} />
+        ativo={ativo} onDestacar={setDestacado} onFixar={fixar} tema={tema}
+        referencia50={!proporcional && vagas === 1} />
 
       <footer className="rodape">
-        Fonte: TSE{resultado?.atualizadoEm ? `, dados gerados em ${resultado.atualizadoEm}` : ''}. A tela se atualiza sozinha quando o TSE publica dados novos.
+        <p>
+          Fonte: TSE{resultado?.atualizadoEm ? `, dados gerados em ${resultado.atualizadoEm}` : ''}. A tela se atualiza sozinha quando o TSE publica dados novos.
+        </p>
+        <p>
+          Projeto de código aberto, sem vínculo com o TSE.{' '}
+          <a href="https://github.com/code-cfernandes/eleicoes-2026-brasil" target="_blank" rel="noopener noreferrer">
+            Veja no GitHub e deixe sua estrela
+          </a>
+        </p>
       </footer>
     </main>
   );

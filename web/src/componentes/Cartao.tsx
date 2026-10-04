@@ -34,11 +34,17 @@ interface Props {
   noGrafico: boolean;
   ativo: boolean;
   esmaecido: boolean;
+  destaque?: boolean;
+  apuracaoComecou?: boolean;
+  dentroDasVagas?: boolean;
+  /** Presidente/Governador: mostra a marca dos 50% dos votos válidos na barra */
+  referencia50?: boolean;
   onDestacar: (numero: string | null) => void;
   onFixar: (numero: string) => void;
 }
 
-export function Cartao({ c, cor, noGrafico, ativo, esmaecido, onDestacar, onFixar }: Props) {
+export function Cartao({ c, cor, noGrafico, ativo, esmaecido, destaque, apuracaoComecou = true, dentroDasVagas, referencia50, onDestacar, onFixar }: Props) {
+  const semVotos = !apuracaoComecou && c.votos === 0;
   // Só elementos inline aqui dentro: o conteúdo pode ficar dentro de um <button>
   const conteudo = (
     <>
@@ -51,19 +57,21 @@ export function Cartao({ c, cor, noGrafico, ativo, esmaecido, onDestacar, onFixa
         <NumeroUrna numero={c.numero} />
       </span>
       <span className="cartao-placar">
-        <span className="cartao-pct">{pct(c.percentual)}</span>
+        <span className="cartao-pct">{semVotos ? '—' : pct(c.percentual)}</span>
+        {dentroDasVagas && !c.situacao && <span className="selo selo-vaga">Na faixa de vagas</span>}
         <Situacao c={c} />
       </span>
       <span className="cartao-rodape">
-        <span>{votos(c.votos)}</span>
+        <span>{semVotos ? 'Aguardando apuração' : votos(c.votos)}</span>
       </span>
       <span className="trilho" aria-hidden="true">
-        <span style={{ width: `${c.percentual}%`, background: cor }} />
+        <span style={{ width: `${semVotos ? 0 : c.percentual}%`, background: cor }} />
+        {referencia50 && !semVotos && <span className="trilho-marca" style={{ left: '50%' }} />}
       </span>
     </>
   );
 
-  const classe = `cartao${c.eleito ? ' cartao-eleito' : ''}${ativo ? ' cartao-ativo' : ''}${esmaecido ? ' cartao-esmaecido' : ''}`;
+  const classe = `cartao${c.eleito ? ' cartao-eleito' : ''}${ativo ? ' cartao-ativo' : ''}${esmaecido ? ' cartao-esmaecido' : ''}${destaque ? ' cartao-destaque' : ''}${semVotos ? ' cartao-sem-votos' : ''}`;
   if (!noGrafico) return <li className={classe}>{conteudo}</li>;
 
   // Candidatos que estão no gráfico: passar o mouse/focar destaca a linha; clicar fixa

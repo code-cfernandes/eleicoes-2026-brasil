@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { PontoHistorico } from '../../../shared/tipos.ts';
 import { diaMes, horaMinuto, pct } from '../formato.ts';
 import { corSerie, neutros, type Tema } from '../paleta.ts';
@@ -18,6 +18,8 @@ interface Props {
   onDestacar: (numero: string | null) => void;
   onFixar: (numero: string) => void;
   tema: Tema;
+  /** Presidente/Governador: mostra a referência de 50% dos votos válidos (maioria no 1º turno) */
+  referencia50?: boolean;
 }
 
 type Linha = { rotulo: string; instante: number; pst: number } & Record<string, number | string>;
@@ -57,7 +59,7 @@ function Dica({ active, payload, series, ativo }: {
   );
 }
 
-export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFixar, tema }: Props) {
+export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFixar, tema, referencia50 }: Props) {
   const { linhas, series } = useMemo(() => {
     const variosDias = new Set(historico.map((p) => diaMes(p.instante))).size > 1;
     const linhas: Linha[] = historico.map((p) => {
@@ -104,6 +106,10 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
                 <XAxis dataKey="rotulo" tick={{ fill: n.eixo, fontSize: 12 }} tickLine={false} axisLine={{ stroke: n.grade }} minTickGap={16} />
                 <YAxis tickFormatter={(v: number) => `${v}%`} tick={{ fill: n.eixo, fontSize: 12 }} tickLine={false} axisLine={false} width={48} />
                 <Tooltip content={<Dica series={series} ativo={ativo} />} cursor={{ stroke: n.eixo, strokeDasharray: '3 3' }} isAnimationActive={false} />
+                {referencia50 && (
+                  <ReferenceLine y={50} stroke="var(--verde)" strokeDasharray="4 4" strokeOpacity={0.6}
+                    label={{ value: '50%', position: 'insideTopRight', fill: 'var(--verde)', fontSize: 11 }} />
+                )}
                 {ordemDesenho.map((s) => {
                   const destaque = ativo === s.numero;
                   const apagada = ativo !== null && !destaque;
