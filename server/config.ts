@@ -18,7 +18,7 @@ export const UFS = 'ac al ap am ba ce df es go ma mt ms mg pa pb pr pe pi rj rn 
 
 // Código do cargo no TSE -> eleição a que pertence e onde há resultado publicado
 export const CARGOS: Record<number, Cargo> = {
-  1: { codigo: 1, nome: 'Presidente', eleicao: 'federal', ufs: ['br', ...UFS], proporcional: false },
+  1: { codigo: 1, nome: 'Presidente', eleicao: 'federal', ufs: ['br', ...UFS, 'zz'], proporcional: false }, // zz = exterior
   3: { codigo: 3, nome: 'Governador', eleicao: 'estadual', ufs: UFS, proporcional: false },
   5: { codigo: 5, nome: 'Senador', eleicao: 'estadual', ufs: UFS, proporcional: false },
   6: { codigo: 6, nome: 'Deputado federal', eleicao: 'estadual', ufs: UFS, proporcional: true },

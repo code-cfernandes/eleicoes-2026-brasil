@@ -48,6 +48,43 @@ export interface PontoHistorico {
   cand: { numero: string; nome: string; votos: number; percentual: number }[];
 }
 
+// Aba "Por estado": andamento da apuração e líder (Presidente) em cada UF
+export interface EstadoPanorama {
+  uf: string;
+  /** % de seções totalizadas; null se o TSE não respondeu para esta UF */
+  pst: number | null;
+  instante: number | null;
+  /** Mais votado no estado, se a apuração já começou */
+  lider: Candidato | null;
+  /** Diferença do líder para o 2º, em pontos percentuais */
+  vantagem: number | null;
+}
+
+export interface Panorama {
+  brasil: { pst: number | null; instante: number | null };
+  estados: EstadoPanorama[];
+}
+
+// Visão de um estado: todos os cargos daquela UF, só com os mais votados
+export interface ResumoCargo {
+  cargo: number;
+  nome: string;
+  proporcional: boolean;
+  vagas: number;
+  /** % de seções totalizadas desse cargo na UF; null se o TSE não respondeu */
+  pst: number | null;
+  instante: number | null;
+  /** Total de candidatos na disputa */
+  total: number;
+  /** Só quem tem votos, do mais votado para o menos: top 3 (Presidente) ou top 5 (demais) */
+  candidatos: Candidato[];
+}
+
+export interface VisaoEstado {
+  uf: string;
+  cargos: ResumoCargo[];
+}
+
 export interface RespostaHistorico {
   /** Candidatos que o gráfico acompanha (top N do snapshot mais recente) */
   numeros: string[];

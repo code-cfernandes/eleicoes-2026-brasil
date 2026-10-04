@@ -4,6 +4,7 @@
   --tinta: #15212d;
   --suave: #5a6876;
   --linha: #d6dee3;
+  --linha-bandeira: rgb(21 33 45 / .22);
   --verde: #0e7c4a;
   --eleito: #f2c230;
   --segundo-turno: #2a78d6;
@@ -21,6 +22,7 @@
     --tinta: #e7edf2;
     --suave: #94a3b1;
     --linha: #283543;
+    --linha-bandeira: rgb(231 237 242 / .3);
     --verde: #2fbf7a;
     --segundo-turno: #3987e5;
     --contexto: #3d4a57;
@@ -44,31 +46,61 @@ button, input, select { font: inherit; color: inherit; }
 
 /* Topo */
 .topo { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .5rem 1rem; margin-bottom: 1.25rem; }
+.topo-titulo { display: flex; flex-direction: column; gap: .3rem; }
 .topo h1 { font: 700 1.5rem/1.1 'Barlow Condensed', sans-serif; }
 .topo h1 span { font-weight: 500; color: var(--suave); margin-left: .35rem; }
+.topo-github {
+  display: inline-flex; align-items: center; gap: .4rem; color: var(--suave); font-size: .8125rem;
+  text-decoration: none; width: fit-content;
+}
+.topo-github:hover, .topo-github:focus-visible { color: var(--tinta); }
 .status { color: var(--suave); font-size: .875rem; display: flex; align-items: center; gap: .5rem; }
 .status-erro { color: #c0392b; }
-.ao-vivo { width: .5rem; height: .5rem; border-radius: 50%; background: var(--verde); animation: pulso 2s ease-in-out infinite; }
+.ao-vivo { width: .5rem; height: .5rem; border-radius: 50%; background: var(--verde); animation: pulso 2s ease-in-out infinite; flex: none; }
 @keyframes pulso { 50% { opacity: .3; } }
 
-/* Filtros: cargo como abas, local como seletor */
-.filtros { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-bottom: 2rem; }
-.cargos { display: flex; gap: .25rem; overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; }
+/* Filtros: cargo como abas, local como seletor. Fica fixo ao rolar (sticky), com fundo sólido
+   e uma linha sutil que só aparece quando há conteúdo embaixo (o :has detecta o scroll do body
+   via a classe .grudado, aplicada por JS só quando necessário seria mais robusto, mas aqui
+   usamos sempre uma borda muito sutil — barato e não pisca). */
+.filtros {
+  display: flex; flex-wrap: nowrap; gap: .75rem; align-items: center; margin-bottom: 2rem;
+  position: sticky; top: 0; z-index: 20; background: var(--fundo);
+  padding: .6rem 0; margin-left: -1rem; margin-right: -1rem; padding-left: 1rem; padding-right: 1rem;
+  border-bottom: 1px solid var(--linha);
+  padding-top: calc(.6rem + env(safe-area-inset-top, 0px));
+}
+/* Evita que a barra fixa cubra o início do conteúdo se algo rolar até aqui por âncora */
+#disputa-titulo, #por-estado-titulo, #visao-estado-titulo { scroll-margin-top: 4.5rem; }
+.cargos {
+  display: flex; gap: .25rem; overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0;
+  mask-image: linear-gradient(to right, transparent, #000 1rem, #000 calc(100% - 1rem), transparent);
+  /* A lista avança sobre a margem lateral da página: o degradê esquerdo cai na margem vazia
+     e só cobre uma aba quando a pessoa rola as abas para o lado (antes cobria "Presidente") */
+  margin-left: -1rem; padding-left: 1rem; scroll-padding-left: 1rem;
+}
+.cargos::-webkit-scrollbar { display: none; }
 .cargos button {
-  border: 0; background: transparent; padding: .45rem .8rem; border-radius: 999px; cursor: pointer;
-  color: var(--suave); font-weight: 500; white-space: nowrap;
+  border: 0; background: transparent; padding: .6rem .8rem; border-radius: 999px; cursor: pointer;
+  color: var(--suave); font-weight: 500; white-space: nowrap; flex: none;
+  min-height: 44px;
 }
 .cargos button:hover { color: var(--tinta); }
 .cargos button[aria-selected="true"] { background: var(--tinta); color: var(--fundo); }
 .seletor-uf select {
-  padding: .45rem 2rem .45rem .8rem; border: 1px solid var(--linha); border-radius: 999px;
-  background: var(--superficie); cursor: pointer;
+  padding: .6rem 2rem .6rem .8rem; border: 1px solid var(--linha); border-radius: 999px;
+  background: var(--superficie); cursor: pointer; min-height: 44px;
 }
 
 /* Andamento da apuração */
 .andamento { margin-bottom: 2rem; }
 .andamento-cabecalho { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1.5rem; }
-.andamento h2 { font: 700 clamp(1.75rem, 5vw, 2.75rem)/1.05 'Barlow Condensed', sans-serif; }
+.andamento h2 {
+  font: 700 clamp(1.75rem, 5vw, 2.75rem)/1.05 'Barlow Condensed', sans-serif;
+  display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+}
+.andamento h2 .bandeira { width: clamp(1.35rem, 3.4vw, 2.1rem); height: clamp(.9rem, 2.3vw, 1.4rem); }
+.andamento h2 .bandeira-globo { width: clamp(1.35rem, 3.4vw, 2.1rem); height: clamp(1.35rem, 3.4vw, 2.1rem); }
 .andamento-numero { color: var(--suave); }
 .andamento-numero strong { color: var(--tinta); font: 700 1.25rem 'Barlow Condensed', sans-serif; font-variant-numeric: tabular-nums; }
 .andamento-detalhe { color: var(--suave); font-size: .875rem; margin-top: .5rem; max-width: 60ch; }
@@ -167,6 +199,95 @@ button, input, select { font: inherit; color: inherit; }
 .mais:hover { border-color: var(--suave); }
 .vazio { color: var(--suave); padding: 1.5rem 0; }
 
+/* Aba "Por estado" */
+.por-estado h2 { font: 700 clamp(1.75rem, 5vw, 2.75rem)/1.05 'Barlow Condensed', sans-serif; }
+.por-estado .andamento-numero { margin-top: .5rem; }
+.resumo-estados { margin-top: 1rem; max-width: 62ch; }
+.resumo-estados-hora { color: var(--suave); font-size: .875rem; }
+.estados-controles { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .75rem; margin: 1.5rem 0 .75rem; }
+.estados-controles p { color: var(--suave); font-size: .875rem; }
+.estados-grupo h3 { font: 700 1.15rem/1.2 'Barlow Condensed', sans-serif; margin: 1.5rem 0 .5rem; }
+.estados { list-style: none; padding: 0; display: grid; gap: .4rem; }
+.estado {
+  all: unset; box-sizing: border-box; width: 100%; cursor: pointer;
+  display: grid; grid-template-columns: minmax(11rem, 14rem) minmax(9rem, 1fr) minmax(13rem, 19rem);
+  align-items: center; gap: .5rem 1.25rem; min-height: 3.5rem; padding: .55rem 1rem;
+  background: var(--superficie); border: 1px solid transparent; border-radius: var(--raio);
+}
+.estado-ver { font-size: .8125rem; color: var(--suave); white-space: nowrap; grid-column: 1 / -1; text-align: right; }
+@media (min-width: 72rem) {
+  .estado { grid-template-columns: minmax(11rem, 14rem) minmax(9rem, 1fr) minmax(13rem, 19rem) auto; }
+  .estado-ver { grid-column: auto; }
+}
+.estado:hover { border-color: var(--linha); }
+.estado:focus-visible { outline: 2px solid var(--verde); outline-offset: 2px; }
+.estado-nome { display: flex; align-items: center; gap: .65rem; min-width: 0; }
+.estado-nome span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bandeira {
+  flex: none; width: 1.5rem; height: 1rem; object-fit: contain; border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--linha-bandeira);
+}
+.bandeira-globo { color: var(--suave); padding: 2px; box-sizing: content-box; }
+.estado-andamento { display: flex; align-items: center; gap: .75rem; }
+.estado-andamento .trilho { flex: 1; height: 8px; }
+.estado-pct { font: 600 1.05rem/1 'Barlow Condensed', sans-serif; font-variant-numeric: tabular-nums; min-width: 4.75rem; text-align: right; }
+.estado-concluido .estado-pct { color: var(--verde); }
+.estado-lider { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.estado-lider .foto { width: 2.25rem; height: 2.25rem; }
+.estado-lider .foto-vazia { font-size: .8rem; }
+.estado-lider-texto { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; font-size: .875rem; font-variant-numeric: tabular-nums; }
+.estado-lider-nome { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.estado-vantagem, .estado-aguardando { color: var(--suave); }
+.estado-aguardando { font-size: .875rem; }
+
+.estados-grupo-exterior { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--linha); }
+.estado-exterior { min-height: 4rem; }
+.estado-exterior .estado-nome { width: 100%; }
+.estado-exterior-texto { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.estado-nome .estado-exterior-texto span { font-size: .8125rem; color: var(--suave); white-space: normal; overflow: visible; text-overflow: clip; }
+
+/* Visão especializada de um estado (clique numa linha de "Por estado") */
+.visao-estado-voltar {
+  all: unset; cursor: pointer; color: var(--suave); font-size: .875rem; font-weight: 600;
+  padding: .4rem .2rem; margin-bottom: .5rem; display: inline-block;
+}
+.visao-estado-voltar:hover, .visao-estado-voltar:focus-visible { color: var(--tinta); }
+.visao-estado-voltar:focus-visible { outline: 2px solid var(--verde); outline-offset: 2px; border-radius: 4px; }
+.visao-estado-voltar::before { content: '‹ '; }
+.visao-estado .andamento-cabecalho { margin-bottom: .25rem; }
+.visao-estado h2 {
+  font: 700 clamp(1.75rem, 5vw, 2.75rem)/1.05 'Barlow Condensed', sans-serif;
+  display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+}
+.visao-estado h2 .bandeira { width: clamp(1.35rem, 3.4vw, 2.1rem); height: clamp(.9rem, 2.3vw, 1.4rem); }
+
+.estado-cargos { display: grid; gap: 1rem; margin-top: 1.5rem; }
+.estado-cargo { background: var(--superficie); border-radius: var(--raio); padding: 1.1rem 1.1rem .9rem; }
+.estado-cargo-cabecalho { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .5rem 1rem; }
+.estado-cargo-cabecalho h3 { font: 700 1.2rem/1.1 'Barlow Condensed', sans-serif; }
+.estado-cargo-pst { color: var(--suave); font-size: .875rem; font-variant-numeric: tabular-nums; }
+.estado-cargo-aviso { color: var(--suave); font-size: .8125rem; margin-top: .4rem; max-width: 56ch; }
+.estado-cargo-vazio { color: var(--suave); font-size: .875rem; margin-top: .75rem; }
+
+.estado-cargo-lista { list-style: none; padding: 0; margin-top: .75rem; display: grid; gap: .55rem; }
+.estado-cargo-item { display: flex; align-items: center; gap: .65rem; flex-wrap: wrap; }
+.estado-cargo-item .foto { width: 2.25rem; height: 2.25rem; flex: none; }
+.estado-cargo-item .foto-vazia { font-size: .8rem; }
+.estado-cargo-item-texto { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; flex: 1 1 10rem; }
+.estado-cargo-item-texto strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.estado-cargo-item-texto span { color: var(--suave); font-size: .8125rem; }
+.estado-cargo-item-placar { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; font-variant-numeric: tabular-nums; margin-left: auto; }
+.estado-cargo-item-pct { font: 600 1rem/1.2 'Barlow Condensed', sans-serif; }
+.estado-cargo-item-votos { color: var(--suave); font-size: .8125rem; }
+.estado-cargo-selo { flex: none; }
+
+.estado-cargo-todos {
+  display: block; width: 100%; margin-top: .9rem; padding: .5rem 1rem; cursor: pointer;
+  border: 1px solid var(--linha); border-radius: 999px; background: transparent; color: var(--suave); font-size: .875rem;
+}
+.estado-cargo-todos:hover { border-color: var(--suave); color: var(--tinta); }
+.estado-exterior .estado-nome { align-items: flex-start; }
+
 /* Evolução */
 .evolucao { margin-top: 3rem; background: var(--superficie); border-radius: var(--raio); padding: 1.25rem 1rem 1rem; }
 .evolucao-cabecalho { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: .75rem; margin-bottom: 1rem; }
@@ -214,7 +335,14 @@ tbody th { font-weight: 500; }
 .rodape a:hover { color: var(--verde); }
 
 @media (max-width: 40rem) {
-  .cargos { flex-wrap: wrap; flex-basis: 100%; }
+  .filtros { flex-wrap: wrap; padding-top: calc(.5rem + env(safe-area-inset-top, 0px)); padding-bottom: .5rem; gap: .5rem; }
+  .cargos { flex-basis: 100%; }
+  .cargos button { padding: .55rem .7rem; font-size: .9375rem; }
+  .seletor-uf { flex: 1 1 auto; }
+  .seletor-uf select { width: 100%; padding: .5rem 2rem .5rem .7rem; min-height: 40px; }
+  .estado { grid-template-columns: 1fr; padding: .7rem .8rem; gap: .45rem; }
+  .estado-lider:empty, .estado-lider:has(.estado-aguardando:empty) { display: none; }
+  .estado-ver { text-align: left; }
   .cartoes { grid-template-columns: 1fr; gap: .5rem; }
   .cartao-botao, .cartao:not(:has(.cartao-botao)) { padding: .75rem; gap: .35rem; }
   .cartao-pct { font-size: 1.75rem; }

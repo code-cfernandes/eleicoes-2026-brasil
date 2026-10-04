@@ -11,7 +11,7 @@ function NumeroUrna({ numero }: { numero: string }) {
   );
 }
 
-function Foto({ c }: { c: Candidato }) {
+export function Foto({ c }: { c: Candidato }) {
   const [falhou, setFalhou] = useState(false);
   if (!c.foto || falhou) {
     const iniciais = c.nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('');

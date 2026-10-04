@@ -2,6 +2,7 @@ import express, { type Request, type Response } from 'express';
 import compression from 'compression';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { config, CARGOS } from './config.ts';
 import { buscarResultado } from './tse.ts';
 import { registrar, lerHistorico } from './historico.ts';
@@ -12,7 +13,7 @@ import {
   avaliar, chavePublica, deixarDeSeguir, disputasComInscritos, disputasSeguidas, enviar,
   estatisticasPush, inscricaoValida, renovar, seguir,
 } from './notificacoes.ts';
-import type { ConfigPublica, Resultado } from '../shared/tipos.ts';
+import type { ConfigPublica, EstadoPanorama, Panorama, Resultado, ResumoCargo, VisaoEstado } from '../shared/tipos.ts';
 
 const app = express();
 app.use(compression()); // JSON de deputados cai de ~250 kB para ~35 kB
@@ -91,6 +92,96 @@ app.get('/api/resultado', async (req: Request, res: Response) => {
 
 // ?por=hora (padrão): último snapshot de cada hora · ?por=todos: cada geração do TSE
 // ?desde=<instante>: só o que veio depois do último ponto que o cliente já tem
+// Aba "Por estado": % apurado e líder de Presidente em cada UF (+ exterior).
+// Lê pelo mesmo cache/dedupe de obter(): mil pessoas na aba = 28 consultas ao TSE a cada 30s.
+// O corpo só é refeito quando alguma UF muda de versão; sem mudança, o navegador recebe 304.
+const UFS_PANORAMA = CARGOS[1]!.ufs.filter((u) => u !== 'br');
+let panoramaPronto: { chave: string; etag: string; json: Buffer; gzip: Buffer } | undefined;
+
+app.get('/api/panorama', async (req: Request, res: Response) => {
+  const pares = await Promise.allSettled(['br', ...UFS_PANORAMA].map((uf) => obter(uf, 1)));
+  const resultados = pares.map((p) => (p.status === 'fulfilled' ? p.value : null));
+  const chave = resultados.map((r) => r?.instante ?? 'x').join(',');
+
+  if (panoramaPronto?.chave !== chave) {
+    const [br, ...ufs] = resultados;
+    const corpo: Panorama = {
+      brasil: { pst: br?.secoesTotalizadas ?? null, instante: br?.instante ?? null },
+      estados: UFS_PANORAMA.map((uf, i): EstadoPanorama => {
+        const r = ufs[i];
+        const [primeiro, segundo] = (r?.candidatos ?? []).filter((c) => c.votos > 0);
+        return {
+          uf,
+          pst: r ? r.secoesTotalizadas : null,
+          instante: r?.instante ?? null,
+          lider: primeiro ?? null,
+          vantagem: primeiro && segundo ? primeiro.percentual - segundo.percentual : null,
+        };
+      }),
+    };
+    const json = Buffer.from(JSON.stringify(corpo));
+    panoramaPronto = { chave, etag: `"pan-${createHash('sha1').update(chave).digest('base64url').slice(0, 16)}"`, json, gzip: gzipSync(json) };
+  }
+
+  res.set({ ETag: panoramaPronto.etag, 'Cache-Control': 'no-cache' });
+  if (req.fresh) {
+    res.status(304).end();
+    return;
+  }
+  res.vary('Accept-Encoding').type('json');
+  if (req.acceptsEncodings('gzip') === 'gzip') res.set('Content-Encoding', 'gzip').send(panoramaPronto.gzip);
+  else res.send(panoramaPronto.json);
+});
+
+// Visão do estado: todos os cargos da UF com os mais votados (3 para Presidente, 5 nos demais).
+// Mesmo cache de obter(); o corpo por UF só é refeito quando algum cargo muda de versão.
+const TOP_ESTADO: Record<number, number> = { 1: 3 };
+const visoesProntas = new Map<string, { chave: string; etag: string; json: Buffer; gzip: Buffer }>();
+
+app.get('/api/estado', async (req: Request, res: Response) => {
+  const uf = String(req.query.uf ?? '').toLowerCase();
+  const cargos = Object.values(CARGOS).filter((c) => config.eleicao[c.eleicao] && c.ufs.includes(uf) && uf !== 'br');
+  if (!cargos.length) {
+    res.status(400).json({ erro: 'uf inválida' });
+    return;
+  }
+  const pares = await Promise.allSettled(cargos.map((c) => obter(uf, c.codigo)));
+  const resultados = pares.map((p) => (p.status === 'fulfilled' ? p.value : null));
+  const chave = resultados.map((r) => r?.instante ?? 'x').join(',');
+
+  let pronto = visoesProntas.get(uf);
+  if (pronto?.chave !== chave) {
+    const corpo: VisaoEstado = {
+      uf,
+      cargos: cargos.map((c, i): ResumoCargo => {
+        const r = resultados[i];
+        return {
+          cargo: c.codigo,
+          nome: c.nome,
+          proporcional: c.proporcional,
+          vagas: r?.vagas ?? 1,
+          pst: r ? r.secoesTotalizadas : null,
+          instante: r?.instante ?? null,
+          total: r?.candidatos.length ?? 0,
+          candidatos: (r?.candidatos ?? []).filter((x) => x.votos > 0).slice(0, TOP_ESTADO[c.codigo] ?? 5),
+        };
+      }),
+    };
+    const json = Buffer.from(JSON.stringify(corpo));
+    pronto = { chave, etag: `"est-${uf}-${createHash('sha1').update(chave).digest('base64url').slice(0, 16)}"`, json, gzip: gzipSync(json) };
+    visoesProntas.set(uf, pronto);
+  }
+
+  res.set({ ETag: pronto.etag, 'Cache-Control': 'no-cache' });
+  if (req.fresh) {
+    res.status(304).end();
+    return;
+  }
+  res.vary('Accept-Encoding').type('json');
+  if (req.acceptsEncodings('gzip') === 'gzip') res.set('Content-Encoding', 'gzip').send(pronto.gzip);
+  else res.send(pronto.json);
+});
+
 app.get('/api/historico', (req: Request, res: Response) => {
   const p = params(req.query.uf, req.query.cargo, res);
   if (!p) return;

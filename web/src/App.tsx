@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConfigPublica, PontoHistorico, Resultado } from '../../shared/tipos.ts';
 import { ajustarCandidatos, buscarConfig, buscarHistorico, buscarResultado, mesclarHistorico } from './api.ts';
 import { Avisos } from './componentes/Avisos.tsx';
 import { Cartao } from './componentes/Cartao.tsx';
 import { Evolucao, type Granularidade } from './componentes/Evolucao.tsx';
+import { Bandeira } from './componentes/Bandeira.tsx';
+import { PorEstado } from './componentes/PorEstado.tsx';
+import { VisaoEstado } from './componentes/VisaoEstado.tsx';
 import { dataHora, horaDoAparelho, pct, pontos, semAcento, votos } from './formato.ts';
 import { corSerie, MAX_SERIES, useTema } from './paleta.ts';
 import { NOMES_UF } from '../../shared/ufs.ts';
@@ -13,10 +16,27 @@ const NO_GRAFICO = 30; // linhas no gráfico: as 8 coloridas + contexto em cinza
 const SEGURANCA_MS = 120_000; // com o ao vivo funcionando, só uma conferência a cada 2 min
 const ESPALHAR_MS = 2_000;    // padrão; o servidor manda um maior quando há muita gente assistindo
 
+function IconeGitHub() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor">
+      <path d="M8 0C3.58 0 0 3.67 0 8.21c0 3.63 2.29 6.71 5.47 7.8.4.08.55-.18.55-.39 0-.19-.01-.82-.01-1.49-2.01.38-2.53-.5-2.69-.96-.09-.23-.48-.96-.82-1.15-.28-.15-.68-.53-.01-.54.63-.01 1.08.59 1.23.83.72 1.23 1.87.88 2.33.67.07-.53.28-.88.51-1.08-1.78-.2-3.64-.91-3.64-4.02 0-.89.31-1.62.82-2.19-.08-.2-.36-1.03.08-2.15 0 0 .67-.22 2.2.84a7.4 7.4 0 0 1 4 0c1.53-1.06 2.2-.84 2.2-.84.44 1.12.16 1.95.08 2.15.51.57.82 1.29.82 2.19 0 3.12-1.87 3.81-3.65 4.02.29.25.54.75.54 1.5 0 1.09-.01 1.97-.01 2.24 0 .21.15.47.55.39A8.23 8.23 0 0 0 16 8.21C16 3.67 12.42 0 8 0Z" />
+    </svg>
+  );
+}
+
 // Cargo e UF ficam na URL: dá para compartilhar o link de uma disputa
+// "cargo" 0 = aba "Por estado"; -1 = visão especializada de um estado (nenhum dos dois é uma
+// disputa: o efeito de atualização por cargo/SSE fica parado nesses dois modos)
+const POR_ESTADO = 0;
+const VISAO_ESTADO = -1;
+
 function lerUrl() {
   const q = new URLSearchParams(location.search);
-  return { cargo: Number(q.get('cargo')) || 1, uf: q.get('uf')?.toLowerCase() || 'br' };
+  const uf = q.get('uf')?.toLowerCase() || 'br';
+  const aba = q.get('aba');
+  if (aba === 'estados') return { cargo: POR_ESTADO, uf };
+  if (aba === 'estado') return { cargo: VISAO_ESTADO, uf };
+  return { cargo: Number(q.get('cargo')) || 1, uf };
 }
 
 export function App() {
@@ -34,8 +54,21 @@ export function App() {
   const [limite, setLimite] = useState(POR_PAGINA);
   const [destacado, setDestacado] = useState<string | null>(null);
   const [fixado, setFixado] = useState<string | null>(null);
+  const abaAtivaRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => { buscarConfig().then(setCfg).catch((e: Error) => setErro(e.message)); }, []);
+
+  // Barra fixa com rolagem horizontal nas abas: mantém a aba atual visível ao trocar de cargo.
+  // Rola só o container das abas (scrollLeft), nunca a página: scrollIntoView mexeria no scroll
+  // vertical também, porque o elemento está dentro de uma barra sticky.
+  useEffect(() => {
+    const botao = abaAtivaRef.current;
+    const lista = botao?.parentElement;
+    if (!botao || !lista) return;
+    const reduzido = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const alvo = botao.offsetLeft + botao.offsetWidth / 2 - lista.clientWidth / 2;
+    lista.scrollTo({ left: Math.max(0, alvo), behavior: reduzido ? 'auto' : 'smooth' });
+  }, [cargo]);
 
   const cargoAtual = cfg?.cargos.find((c) => c.codigo === cargo);
 
@@ -47,7 +80,8 @@ export function App() {
   }, [cargoAtual, cargo, uf, ufEstadual]);
 
   useEffect(() => {
-    history.replaceState(null, '', `?cargo=${cargo}&uf=${uf}`);
+    const url = cargo === POR_ESTADO ? '?aba=estados' : cargo === VISAO_ESTADO ? `?aba=estado&uf=${uf}` : `?cargo=${cargo}&uf=${uf}`;
+    history.replaceState(null, '', url);
     if (uf !== 'br') setUfEstadual(uf);
     setBusca(''); setLimite(POR_PAGINA); setFixado(null); setDestacado(null);
     setResultado(undefined); setHistorico([]);
@@ -184,8 +218,14 @@ export function App() {
   return (
     <main>
       <header className="topo">
-        <h1>Apuração 2026 <span>{cfg?.turno}</span></h1>
-        <p className={`status${erro ? ' status-erro' : ''}`} role="status">
+        <div className="topo-titulo">
+          <h1>Apuração 2026 <span>{cfg?.turno}</span></h1>
+          <a className="topo-github" href="https://github.com/code-cfernandes/eleicoes-2026-brasil" target="_blank" rel="noopener noreferrer">
+            <IconeGitHub />
+            Código aberto no GitHub, deixe sua estrela
+          </a>
+        </div>
+        {cargo !== POR_ESTADO && cargo !== VISAO_ESTADO && <p className={`status${erro ? ' status-erro' : ''}`} role="status">
           {erro
             ? `Sem conexão com os resultados (${erro}). Nova tentativa em ${(cfg?.intervaloMs ?? 30000) / 1000}s.`
             : resultado?.instante
@@ -197,29 +237,53 @@ export function App() {
                   ? <><span className="ao-vivo" aria-hidden="true" />Ao vivo. TSE atualizou {dataHora(resultado.instante)}</>
                   : <>TSE atualizou {dataHora(resultado.instante)}. Conferindo a cada {(cfg?.intervaloMs ?? 30000) / 1000}s</>
               : 'Carregando…'}
-        </p>
+        </p>}
       </header>
 
       <nav className="filtros" aria-label="Disputa">
         <div className="cargos" role="tablist" aria-label="Cargo">
           {cfg?.cargos.map((c) => (
             <button key={c.codigo} type="button" role="tab" aria-selected={c.codigo === cargo}
+              ref={c.codigo === cargo ? abaAtivaRef : undefined}
               onClick={() => setDisputa({ cargo: c.codigo, uf })}>
               {c.nome}
             </button>
           ))}
+          <button type="button" role="tab" aria-selected={cargo === POR_ESTADO || cargo === VISAO_ESTADO}
+            ref={cargo === POR_ESTADO || cargo === VISAO_ESTADO ? abaAtivaRef : undefined}
+            onClick={() => setDisputa({ cargo: POR_ESTADO, uf })}>
+            Por estado
+          </button>
         </div>
-        <label className="seletor-uf">
-          <span className="visualmente-oculto">Local</span>
-          <select value={uf} onChange={(e) => setDisputa({ cargo, uf: e.target.value })}>
-            {cargoAtual?.ufs.map((u) => <option key={u} value={u}>{NOMES_UF[u] ?? u.toUpperCase()}</option>)}
-          </select>
-        </label>
+        {cargo !== POR_ESTADO && cargo !== VISAO_ESTADO && (
+          <label className="seletor-uf">
+            <span className="visualmente-oculto">Local</span>
+            <select value={uf} onChange={(e) => setDisputa({ cargo, uf: e.target.value })}>
+              {cargoAtual?.ufs.map((u) => <option key={u} value={u}>{NOMES_UF[u] ?? u.toUpperCase()}</option>)}
+            </select>
+          </label>
+        )}
       </nav>
+
+      {cargo === POR_ESTADO ? (
+        <PorEstado intervaloMs={cfg?.intervaloMs ?? 30_000}
+          onAbrir={(u) => {
+            // Exterior só tem Presidente: vai direto para a disputa. Estados têm visão própria.
+            setDisputa(u === 'zz' ? { cargo: 1, uf: u } : { cargo: VISAO_ESTADO, uf: u });
+            scrollTo({ top: 0 });
+          }} />
+      ) : cargo === VISAO_ESTADO ? (
+        <VisaoEstado uf={uf} intervaloMs={cfg?.intervaloMs ?? 30_000}
+          onVoltar={() => { setDisputa({ cargo: POR_ESTADO, uf }); scrollTo({ top: 0 }); }}
+          onAbrirDisputa={(c, u) => { setDisputa({ cargo: c, uf: u }); scrollTo({ top: 0 }); }} />
+      ) : (<>
 
       <section className="andamento" aria-labelledby="disputa-titulo">
         <div className="andamento-cabecalho">
-          <h2 id="disputa-titulo">{cargoAtual?.nome ?? '…'}, {local}</h2>
+          <h2 id="disputa-titulo">
+            {cargoAtual?.nome ?? '…'}, {local}
+            {uf !== 'br' && <Bandeira uf={uf} />}
+          </h2>
           <p className="andamento-numero">
             <strong>{resultado ? pct(resultado.secoesTotalizadas) : '–'}</strong> das seções totalizadas
           </p>
@@ -331,6 +395,8 @@ export function App() {
       <Evolucao historico={historico} slots={slots} por={por} onPor={setPor}
         ativo={ativo} onDestacar={setDestacado} onFixar={fixar} tema={tema}
         referencia50={!proporcional && vagas === 1} />
+
+      </>)}
 
       <footer className="rodape">
         <p>

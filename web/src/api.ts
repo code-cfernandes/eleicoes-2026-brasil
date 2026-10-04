@@ -1,4 +1,4 @@
-import type { ConfigPublica, PontoHistorico, RespostaHistorico, Resultado } from '../../shared/tipos.ts';
+import type { ConfigPublica, Panorama, PontoHistorico, RespostaHistorico, Resultado, VisaoEstado } from '../../shared/tipos.ts';
 
 async function json<T>(url: string, signal?: AbortSignal): Promise<T> {
   // no-cache: o navegador revalida com If-None-Match; sem novidade, o servidor responde 304
@@ -9,6 +9,10 @@ async function json<T>(url: string, signal?: AbortSignal): Promise<T> {
 }
 
 export const buscarConfig = () => json<ConfigPublica>('/api/config');
+
+export const buscarPanorama = (signal?: AbortSignal) => json<Panorama>('/api/panorama', signal);
+
+export const buscarEstado = (uf: string, signal?: AbortSignal) => json<VisaoEstado>(`/api/estado?uf=${uf}`, signal);
 
 export const buscarResultado = (uf: string, cargo: number, signal?: AbortSignal) =>
   json<Resultado>(`/api/resultado?uf=${uf}&cargo=${cargo}`, signal);

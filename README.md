@@ -20,6 +20,11 @@
 </p>
 
 <p align="center">
+  <a href="https://eleicoes.code-cfernandes.com"><b>Acompanhe ao vivo em eleicoes.code-cfernandes.com</b></a><br>
+  <sub>No ar durante o 1º e o 2º turno de 2026. No celular, instale o app e ative os avisos da sua disputa.</sub>
+</p>
+
+<p align="center">
   <b>Se o projeto te ajudou ou você achou interessante, deixe uma ⭐ — é o que ajuda outras pessoas a encontrá-lo.</b>
 </p>
 
@@ -34,6 +39,8 @@
 - **Todos os cargos de 2026**: Presidente (Brasil e por UF), Governador, Senador, Deputado federal, Deputado estadual e Deputado distrital.
 - **Leitura em segundos**: quem lidera, por quantos pontos e votos, quanto falta para os 50% (Presidente e Governador), quem está dentro das vagas (Senado) e se a disputa já foi definida.
 - **Fotos oficiais** das candidaturas, vindas do próprio TSE, e o número de cada candidato nas caixinhas da urna eletrônica.
+- **Apuração por estado**: quanto cada UF já apurou, lado a lado, com a bandeira do estado e a foto de quem lidera para Presidente; ordene por andamento, nome ou região. Os votos do exterior aparecem à parte.
+- **Visão de cada estado**: toque num estado e veja todos os cargos dele de uma vez, com os mais votados para Presidente, Governador, Senado e deputados.
 - **Gráfico de evolução** com todos os candidatos, hora a hora ou a cada atualização do TSE, com o histórico guardado no servidor (quem chega às 22h vê a noite inteira).
 - **Ao vivo**: a tela se atualiza sozinha assim que o TSE publica dados novos, sem recarregar.
 - **Notificações no celular (PWA)**: siga uma disputa e receba aviso no início da apuração, a cada 25%, em viradas e quando o resultado sair.
@@ -145,6 +152,11 @@ O TSE muda detalhes do leiaute entre eleições. Se algo quebrar num pleito futu
 Issues e pull requests são bem-vindos: correções, melhorias de acessibilidade, suporte ao 2º turno ou a eleições municipais.
 
 Se este projeto foi útil, **deixe uma ⭐ no repositório** e compartilhe com quem vai acompanhar a apuração.
+
+## Créditos
+
+- Resultados, fotos das candidaturas e configurações das eleições: arquivos públicos do [Tribunal Superior Eleitoral](https://resultados.tse.jus.br).
+- Bandeiras dos estados: [Wikimedia Commons](https://commons.wikimedia.org), todas em domínio público (símbolos oficiais), convertidas para PNG em tamanho reduzido.
 
 ## Licença
 
