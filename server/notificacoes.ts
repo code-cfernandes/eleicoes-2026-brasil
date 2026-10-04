@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { db } from './banco.ts';
 import { config, CARGOS, env, envNumero } from './config.ts';
 import { NOMES_UF } from '../shared/ufs.ts';
-import type { Candidato, Resultado } from '../shared/tipos.ts';
+import type { Candidato, EventoApuracao, Resultado } from '../shared/tipos.ts';
 
 // Web Push: o aparelho inscreve-se em disputas e recebe avisos dos momentos que importam
 // (início, marcos de apuração, troca na liderança, resultado definido), não de cada
@@ -76,6 +76,11 @@ db.exec(`
   ) WITHOUT ROWID;
   CREATE INDEX IF NOT EXISTS inscricao_por_disputa ON inscricao_disputa (uf, cargo);
 
+  -- Quem assina o canal global de novidades (as "notícias" são as mesmas para todos os aparelhos)
+  CREATE TABLE IF NOT EXISTS inscricao_novidades (
+    endpoint TEXT PRIMARY KEY REFERENCES inscricao (endpoint) ON DELETE CASCADE
+  ) WITHOUT ROWID;
+
   -- O que já foi avisado em cada disputa (sobrevive a restart: ninguém recebe aviso repetido)
   CREATE TABLE IF NOT EXISTS alerta_estado (
     uf            TEXT    NOT NULL,
@@ -98,6 +103,13 @@ const sql = {
   deixar: db.prepare('DELETE FROM inscricao_disputa WHERE endpoint = ? AND uf = ? AND cargo = ?'),
   apagar: db.prepare('DELETE FROM inscricao WHERE endpoint = ?'),
   apagarSemDisputas: db.prepare('DELETE FROM inscricao WHERE endpoint = ? AND NOT EXISTS (SELECT 1 FROM inscricao_disputa WHERE endpoint = ?)'),
+  apagarOrfao: db.prepare(`DELETE FROM inscricao WHERE endpoint = ?
+    AND NOT EXISTS (SELECT 1 FROM inscricao_disputa WHERE endpoint = ?)
+    AND NOT EXISTS (SELECT 1 FROM inscricao_novidades WHERE endpoint = ?)`),
+  seguirNovidades: db.prepare('INSERT OR IGNORE INTO inscricao_novidades (endpoint) VALUES (?)'),
+  deixarNovidades: db.prepare('DELETE FROM inscricao_novidades WHERE endpoint = ?'),
+  segueNovidades: db.prepare('SELECT 1 FROM inscricao_novidades WHERE endpoint = ?'),
+  inscritosNovidades: db.prepare('SELECT i.endpoint, i.p256dh, i.auth FROM inscricao i JOIN inscricao_novidades n USING (endpoint)'),
   disputasDe: db.prepare('SELECT uf, cargo FROM inscricao_disputa WHERE endpoint = ? ORDER BY cargo, uf'),
   inscritos: db.prepare(`SELECT i.endpoint, i.p256dh, i.auth FROM inscricao i
     JOIN inscricao_disputa d USING (endpoint) WHERE d.uf = ? AND d.cargo = ?`),
@@ -121,8 +133,24 @@ export function seguir(s: PushSubscription, uf: string, cargo: number): ErroInsc
 
 export function deixarDeSeguir(endpoint: string, uf: string, cargo: number) {
   sql.deixar.run(endpoint, uf, cargo);
-  sql.apagarSemDisputas.run(endpoint, endpoint); // sem disputas, a inscrição não serve para nada
+  sql.apagarOrfao.run(endpoint, endpoint, endpoint); // sem disputa nem novidade, a inscrição não serve para nada
 }
+
+// --- Canal global de novidades (as mesmas para todos os aparelhos) ---
+export function seguirNovidades(s: PushSubscription): ErroInscricao | null {
+  const nova = !sql.existe.get(s.endpoint);
+  if (nova && (sql.totalInscricoes.get() as { n: number }).n >= MAX_INSCRICOES) return 'lotado';
+  sql.salvar.run(s.endpoint, s.keys.p256dh, s.keys.auth, Date.now());
+  sql.seguirNovidades.run(s.endpoint);
+  return null;
+}
+
+export function deixarNovidades(endpoint: string) {
+  sql.deixarNovidades.run(endpoint);
+  sql.apagarOrfao.run(endpoint, endpoint, endpoint);
+}
+
+export const segueNovidades = (endpoint: string) => !!sql.segueNovidades.get(endpoint);
 
 // Navegador trocou a inscrição: as disputas seguidas passam para a nova
 const transferir = db.prepare('UPDATE OR IGNORE inscricao_disputa SET endpoint = ? WHERE endpoint = ?');
@@ -267,6 +295,19 @@ export function enviar(uf: string, cargo: number, aviso: Aviso) {
   const payload = JSON.stringify(conteudo);
   for (const i of inscritos) {
     fila.push({ inscricao: { endpoint: i.endpoint, keys: { p256dh: i.p256dh, auth: i.auth } }, payload, topico: `${uf}${cargo}`, urgente });
+  }
+  bombear();
+  return inscritos.length;
+}
+
+// Notícia nova na linha do tempo: avisa quem assina o canal global de novidades.
+// tag fixa: a novidade nova substitui a anterior no aparelho (sem virar pilha de spam).
+export function enviarNovidades(ev: EventoApuracao) {
+  const inscritos = sql.inscritosNovidades.all() as { endpoint: string; p256dh: string; auth: string }[];
+  if (!inscritos.length) return 0;
+  const payload = JSON.stringify({ titulo: 'Novidades', corpo: ev.texto, url: '/?aba=novidades', tag: 'novidades' });
+  for (const i of inscritos) {
+    fila.push({ inscricao: { endpoint: i.endpoint, keys: { p256dh: i.p256dh, auth: i.auth } }, payload, topico: 'novidades', urgente: false });
   }
   bombear();
   return inscritos.length;

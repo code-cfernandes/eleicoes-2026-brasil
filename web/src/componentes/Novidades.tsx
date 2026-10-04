@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { EventoApuracao, TipoEvento } from '../../../shared/tipos.ts';
 import { NOMES_UF } from '../../../shared/ufs.ts';
 import { horaMinuto } from '../formato.ts';
+import { AvisosNovidades } from './AvisosNovidades.tsx';
 
 // "O que está acontecendo agora": linha do tempo de eventos estatísticos da totalização
 // (GET /api/novidades), atualizada ao vivo pelo canal global de SSE (/api/eventos?canal=novidades).
@@ -27,12 +28,14 @@ function local(uf: string) {
   return NOMES_UF[uf] ? ` · ${NOMES_UF[uf]}` : '';
 }
 
-export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas }: {
-  intervaloMs: number; compacto?: boolean; limite?: number; onVerTodas?: () => void;
+export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas, chave }: {
+  intervaloMs: number; compacto?: boolean; limite?: number; onVerTodas?: () => void; chave?: string;
 }) {
   const [eventos, setEventos] = useState<EventoApuracao[]>();
   const [disponivel, setDisponivel] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>('todas');
+  const [temMais, setTemMais] = useState(false);
+  const [carregandoMais, setCarregandoMais] = useState(false);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -42,7 +45,12 @@ export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas }:
       try {
         const r = await fetch(`/api/novidades?limite=${limite ?? 30}`, { signal: ctrl.signal, cache: 'no-cache' });
         if (r.status === 404) { setDisponivel(false); return; }
-        if (r.ok) { setEventos((await r.json()).eventos); setDisponivel(true); }
+        if (r.ok) {
+          const { eventos: lista } = await r.json() as { eventos: EventoApuracao[] };
+          setEventos(lista);
+          setTemMais(lista.length >= (limite ?? 30));
+          setDisponivel(true);
+        }
       } catch { /* tenta de novo na próxima rodada */ }
       if (!ctrl.signal.aborted) timer = setTimeout(carregar, intervaloMs);
     };
@@ -77,6 +85,22 @@ export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas }:
 
     return () => { ctrl.abort(); clearTimeout(timer); fonte?.close(); };
   }, [intervaloMs, limite]);
+
+  // Histórico: busca a página anterior (eventos com id menor que o mais antigo já na tela)
+  async function verMaisAntigas() {
+    if (!eventos?.length || carregandoMais) return;
+    const minId = Math.min(...eventos.map((e) => e.id));
+    setCarregandoMais(true);
+    try {
+      const r = await fetch(`/api/novidades?antes=${minId}&limite=30`, { cache: 'no-cache' });
+      if (r.ok) {
+        const { eventos: antigos } = await r.json() as { eventos: EventoApuracao[] };
+        setTemMais(antigos.length >= 30);
+        setEventos((atual) => [...(atual ?? []), ...antigos]);
+      }
+    } catch { /* mantém o que já tem */ }
+    setCarregandoMais(false);
+  }
 
   if (!disponivel) {
     return compacto ? null : (
@@ -140,7 +164,13 @@ export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas }:
     <section className="novidades-pagina" aria-labelledby="novidades-titulo">
       <h2 id="novidades-titulo">Novidades</h2>
       <p className="resumo-estados">Atualizações em tempo real da totalização.</p>
+      {chave && <AvisosNovidades chave={chave} />}
       {conteudo}
+      {filtro === 'todas' && temMais && (
+        <button type="button" className="mais-botao" disabled={carregandoMais} onClick={() => void verMaisAntigas()}>
+          {carregandoMais ? 'Carregando…' : 'Ver novidades mais antigas'}
+        </button>
+      )}
     </section>
   );
 }

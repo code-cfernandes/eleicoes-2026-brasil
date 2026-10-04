@@ -1,7 +1,7 @@
 import { db } from './banco.ts';
 import { CARGOS } from './config.ts';
 import { votosTotaisAte } from './historico.ts';
-import { nomeProprio, type Deteccao } from './notificacoes.ts';
+import { enviarNovidades, nomeProprio, type Deteccao } from './notificacoes.ts';
 import { CANAL_NOVIDADES, transmitir } from './eventos.ts';
 import { iaDisponivel, intervaloIaMs, redigir } from './ia.ts';
 import { NOMES_UF } from '../shared/ufs.ts';
@@ -80,6 +80,8 @@ const sql = {
   ultimoDoTipo: db.prepare('SELECT instante FROM novidade WHERE tipo = ? AND cargo = ? ORDER BY id DESC LIMIT 1'),
   ler: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto, ia FROM novidade
     WHERE id > ? ORDER BY id DESC LIMIT ?`),
+  lerAntes: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto, ia FROM novidade
+    WHERE id < ? ORDER BY id DESC LIMIT ?`),
   // Presidente/Brasil ainda com frase-modelo, do mais antigo para o mais novo (fila de redação)
   pendenteIA: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto FROM novidade
     WHERE uf = 'br' AND cargo = 1 AND ia = 0 ORDER BY id LIMIT 1`),
@@ -147,6 +149,7 @@ function publicar(evs: (EventoApuracao | null)[]) {
     if (!ev) continue;
     console.log(`[novidade ${ev.id}] ${ev.texto}`);
     transmitir(CANAL_NOVIDADES, 'novidade', ev);
+    try { enviarNovidades(ev); } catch (e) { console.error('[novidades push]', (e as Error).message); }
   }
 }
 
@@ -303,26 +306,65 @@ export function lerNovidades(desde: number, limite: number): Buffer {
   return json;
 }
 
+// Página mais antiga do histórico (id < antes, mais recentes primeiro). Sem cache pronto:
+// consultada raramente (botão "ver mais antigas"), e o texto pode mudar quando a IA reescreve.
+export function lerNovidadesAntes(antes: number, limite: number): Buffer {
+  const linhas = sql.lerAntes.all(antes, limite) as unknown as LinhaNovidade[];
+  const eventos: EventoApuracao[] = linhas.map(({ ia, ...e }) => ({ ...e, ...(ia ? { fonte: 'ia' as const } : {}) }));
+  return Buffer.from(JSON.stringify({ eventos }));
+}
+
 // --- Redação por IA (DeepSeek): reescreve, aos poucos, o texto dos eventos de Presidente/Brasil.
 // A detecção continua determinística e a frase-modelo é gravada na hora (nunca fica vazio); a IA
-// só substitui o texto depois, no ritmo de ~1 chamada por IA_INTERVALO_MIN. Sem chave ou em
-// qualquer falha, a frase-modelo permanece e a próxima rodada tenta de novo.
+// só substitui o texto depois. Sem chave ou em qualquer falha, a frase-modelo permanece.
+// Dois ritmos: backfillIA() sobe e recalcula as antigas (1s entre chamadas); redigirComIA()
+// cuida do que vai aparecendo, no ritmo de ~1 chamada por IA_INTERVALO_MIN.
+let processandoIA = false;
 let ultimaChamadaIA = 0;
 
+function aplicarRedigida(p: LinhaNovidade, textoIA: string) {
+  sql.marcarIA.run(textoIA, p.id);
+  prontos.clear();
+  const ev: EventoApuracao = { id: p.id, instante: p.instante, tipo: p.tipo, uf: p.uf, cargo: p.cargo, texto: textoIA, fonte: 'ia' };
+  console.log(`[ia] ${textoIA}`);
+  transmitir(CANAL_NOVIDADES, 'novidade', ev);
+}
+
+// Recalcula as notícias antigas que ainda têm frase-modelo (chamado uma vez na subida)
+export async function backfillIA() {
+  if (!iaDisponivel() || processandoIA) return;
+  processandoIA = true;
+  try {
+    let n = 0;
+    while (n < 200) {
+      const p = sql.pendenteIA.get() as LinhaNovidade | undefined;
+      if (!p) break;
+      const textoIA = await redigir(p.texto);
+      if (!textoIA) break; // falhou/limite: para o backfill, o throttle assume depois
+      aplicarRedigida(p, textoIA);
+      n++;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  } catch (e) {
+    console.error('[ia backfill]', (e as Error).message);
+  } finally {
+    processandoIA = false;
+  }
+}
+
 export async function redigirComIA() {
-  if (!iaDisponivel() || Date.now() - ultimaChamadaIA < intervaloIaMs()) return;
+  if (!iaDisponivel() || processandoIA || Date.now() - ultimaChamadaIA < intervaloIaMs()) return;
   ultimaChamadaIA = Date.now();
+  processandoIA = true;
   try {
     const p = sql.pendenteIA.get() as LinhaNovidade | undefined;
     if (!p) return;
     const textoIA = await redigir(p.texto);
     if (!textoIA) return;
-    sql.marcarIA.run(textoIA, p.id);
-    prontos.clear();
-    const ev: EventoApuracao = { id: p.id, instante: p.instante, tipo: p.tipo, uf: p.uf, cargo: p.cargo, texto: textoIA, fonte: 'ia' };
-    console.log(`[ia] ${textoIA}`);
-    transmitir(CANAL_NOVIDADES, 'novidade', ev);
+    aplicarRedigida(p, textoIA);
   } catch (e) {
     console.error('[ia]', (e as Error).message);
+  } finally {
+    processandoIA = false;
   }
 }

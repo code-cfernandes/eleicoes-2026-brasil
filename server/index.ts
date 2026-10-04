@@ -9,10 +9,10 @@ import { registrar, lerHistorico } from './historico.ts';
 import { fechar } from './banco.ts';
 import { obterFoto } from './fotos.ts';
 import { assinar, CANAL_NOVIDADES, conexoesAbertas, disputasAssistidas, encerrarTodas, notificar } from './eventos.ts';
-import { idMaisRecente, lerNovidades, processar, pulsar, redigirComIA } from './novidades.ts';
+import { backfillIA, idMaisRecente, lerNovidades, lerNovidadesAntes, processar, pulsar, redigirComIA } from './novidades.ts';
 import {
-  avaliar, chavePublica, deixarDeSeguir, disputasComInscritos, disputasSeguidas, enviar,
-  estatisticasPush, inscricaoValida, renovar, seguir,
+  avaliar, chavePublica, deixarDeSeguir, deixarNovidades, disputasComInscritos, disputasSeguidas, enviar,
+  estatisticasPush, inscricaoValida, renovar, seguir, segueNovidades, seguirNovidades,
 } from './notificacoes.ts';
 import type { ConfigPublica, EstadoPanorama, Panorama, Resultado, ResumoCargo, SaudeDados, VisaoEstado } from '../shared/tipos.ts';
 
@@ -149,10 +149,16 @@ app.get('/api/panorama', async (req: Request, res: Response) => {
 });
 
 // "O que está acontecendo agora" (regras em novidades.ts). Mais recentes primeiro;
-// ?desde=<id>: só eventos de id maior; ?limite= (padrão 30, máx. 100). Sem evento novo: 304.
+// ?desde=<id>: só eventos de id maior; ?antes=<id>: página mais antiga (id menor);
+// ?limite= (padrão 30, máx. 100). Sem evento novo: 304.
 app.get('/api/novidades', (req: Request, res: Response) => {
   const desde = Math.max(Math.floor(Number(req.query.desde) || 0), 0);
+  const antes = Math.max(Math.floor(Number(req.query.antes) || 0), 0);
   const limite = Math.min(Math.max(Math.floor(Number(req.query.limite) || 30), 1), 100);
+  if (antes > 0) {
+    res.type('json').send(lerNovidadesAntes(antes, limite));
+    return;
+  }
   res.set({ ETag: `"nov-${idMaisRecente()}"`, 'Cache-Control': 'no-cache' });
   if (req.fresh) {
     res.status(304).end();
@@ -300,6 +306,22 @@ app.delete('/api/notificacoes', corpoJson, (req: Request, res: Response) => {
   res.status(204).end();
 });
 
+// Canal global de novidades (as mesmas para todos os aparelhos): o aparelho liga/desliga.
+app.post('/api/notificacoes/novidades', corpoJson, (req: Request, res: Response) => {
+  if (!inscricaoValida(req.body?.inscricao)) {
+    res.status(400).json({ erro: 'Inscrição de push inválida' });
+    return;
+  }
+  const erro = seguirNovidades(req.body.inscricao);
+  if (erro === 'lotado') res.status(503).json({ erro: 'Limite de aparelhos inscritos atingido' });
+  else res.status(204).end();
+});
+
+app.delete('/api/notificacoes/novidades', corpoJson, (req: Request, res: Response) => {
+  if (typeof req.body?.endpoint === 'string') deixarNovidades(req.body.endpoint);
+  res.status(204).end();
+});
+
 app.post('/api/notificacoes/renovar', corpoJson, (req: Request, res: Response) => {
   if (typeof req.body?.antigo !== 'string' || !inscricaoValida(req.body?.inscricao)) {
     res.status(400).json({ erro: 'Inscrição de push inválida' });
@@ -311,7 +333,8 @@ app.post('/api/notificacoes/renovar', corpoJson, (req: Request, res: Response) =
 
 // POST (e não GET) para o endpoint não ir parar em logs de URL
 app.post('/api/notificacoes/consultar', corpoJson, (req: Request, res: Response) => {
-  res.json({ disputas: typeof req.body?.endpoint === 'string' ? disputasSeguidas(req.body.endpoint) : [] });
+  const endpoint = typeof req.body?.endpoint === 'string' ? req.body.endpoint : null;
+  res.json({ disputas: endpoint ? disputasSeguidas(endpoint) : [], novidades: endpoint ? segueNovidades(endpoint) : false });
 });
 
 app.get('/api/saude', (_req, res) => {
@@ -352,7 +375,9 @@ void coletarTudo();
 const coletor = setInterval(coletarTudo, config.cacheMs);
 
 // Redação por IA (DeepSeek): roda em intervalo próprio, fora do coletor (uma chamada lenta
-// não segura a coleta do TSE). O throttle real fica dentro de redigirComIA.
+// não segura a coleta do TSE). O throttle real fica dentro de redigirComIA. Na subida, backfillIA
+// recalcula as notícias antigas que ainda estão com frase-modelo.
+void backfillIA();
 setInterval(() => { void redigirComIA(); }, config.cacheMs);
 
 const servidor = app.listen(config.port, () => console.log(`http://localhost:${config.port}`));

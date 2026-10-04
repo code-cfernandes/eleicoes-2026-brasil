@@ -347,7 +347,7 @@ export function App() {
         ) : secao === 'mapa' ? (
           <Mapa intervaloMs={cfg?.intervaloMs ?? 30_000} onAbrirEstado={abrirEstado} />
         ) : secao === 'novidades' ? (
-          <Novidades intervaloMs={cfg?.intervaloMs ?? 30_000} />
+          <Novidades intervaloMs={cfg?.intervaloMs ?? 30_000} chave={cfg?.chavePush ?? ''} />
         ) : secao === 'mais' ? (
           <Mais />
         ) : secao === 'sobre' ? (
