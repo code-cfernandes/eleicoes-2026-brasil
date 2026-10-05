@@ -425,6 +425,7 @@ button, input, select { font: inherit; color: inherit; }
   .inicio-grade-2col { grid-template-columns: 1fr 1fr; }
 }
 .inicio-mapa-mini .mb-svg-area { max-height: 32rem; }
+.inicio-mapa-alternar { margin: .5rem 0 .75rem; }
 .evolucao-compacta .grafico { height: 14rem; }
 .evolucao-compacta { margin-top: 0; }
 

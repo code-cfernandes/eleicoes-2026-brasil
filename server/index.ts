@@ -123,13 +123,18 @@ app.get('/api/panorama', async (req: Request, res: Response) => {
       brasil: { pst: br?.secoesTotalizadas ?? null, instante: br?.instante ?? null, ...(br?.totais && { totais: br.totais }) },
       estados: ufs.map((uf, i): EstadoPanorama => {
         const r = resultados[i];
-        const [primeiro, segundo] = (r?.candidatos ?? []).filter((c) => c.votos > 0);
+        const [primeiro, segundo, terceiro] = (r?.candidatos ?? []).filter((c) => c.votos > 0);
+        const vagas = r?.vagas ?? 1;
         return {
           uf,
           pst: r ? r.secoesTotalizadas : null,
           instante: r?.instante ?? null,
           lider: primeiro ?? null,
-          vantagem: primeiro && segundo ? primeiro.percentual - segundo.percentual : null,
+          segundo: vagas > 1 ? segundo : undefined,
+          // Vaga única: vantagem do 1º sobre o 2º. Senado (2 vagas): margem da última vaga (2º sobre o 3º).
+          vantagem: vagas > 1
+            ? (segundo && terceiro ? segundo.percentual - terceiro.percentual : null)
+            : (primeiro && segundo ? primeiro.percentual - segundo.percentual : null),
           secoesTotalizadas: r?.totais?.secoesTotalizadas,
           secoes: r?.totais?.secoes,
         };

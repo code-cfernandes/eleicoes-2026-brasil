@@ -466,13 +466,24 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
                 {e?.pst === null || e?.pst === undefined ? 'Sem dados do TSE no momento' : `${pct(e.pst)} das seções totalizadas`}
               </div>
               {e?.lider ? (
-                <div className="mb-tooltip-lider">
-                  <Foto c={e.lider} />
-                  <span>
-                    <span className="mb-tooltip-lider-nome">{e.lider.nome}</span>{' '}
-                    <span className="mb-tooltip-lider-pct">({pct(e.lider.percentual)})</span>
-                  </span>
-                </div>
+                <>
+                  <div className="mb-tooltip-lider">
+                    <Foto c={e.lider} />
+                    <span>
+                      <span className="mb-tooltip-lider-nome">{e.lider.nome}</span>{' '}
+                      <span className="mb-tooltip-lider-pct">({pct(e.lider.percentual)})</span>
+                    </span>
+                  </div>
+                  {e.segundo && (
+                    <div className="mb-tooltip-lider">
+                      <Foto c={e.segundo} />
+                      <span>
+                        <span className="mb-tooltip-lider-nome">{e.segundo.nome}</span>{' '}
+                        <span className="mb-tooltip-lider-pct">({pct(e.segundo.percentual)})</span>
+                      </span>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="mb-tooltip-sem-dados">{rotuloLider}: aguardando totalização</div>
               )}
@@ -495,19 +506,36 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
                 {e?.pst === null || e?.pst === undefined ? 'Sem dados do TSE no momento' : `${pct(e.pst)} das seções totalizadas`}
               </div>
               {e?.lider ? (
-                <div className="mb-card-lider">
-                  <Foto c={e.lider} />
-                  <span className="mb-card-lider-texto">
-                    <strong>{e.lider.nome}</strong>
-                    <span>{e.lider.partido}</span>
-                    <span className="mb-card-lider-placar">
-                      {pct(e.lider.percentual)}
-                      {vantagem !== null && vantagem !== undefined && (
-                        <> · {vantagem.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} p.p. à frente</>
-                      )}
+                <>
+                  <div className="mb-card-lider">
+                    <Foto c={e.lider} />
+                    <span className="mb-card-lider-texto">
+                      <strong>{e.lider.nome}</strong>
+                      <span>{e.lider.partido}</span>
+                      <span className="mb-card-lider-placar">
+                        {pct(e.lider.percentual)}
+                        {!e.segundo && vantagem !== null && vantagem !== undefined && (
+                          <> · {vantagem.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} p.p. à frente</>
+                        )}
+                      </span>
                     </span>
-                  </span>
-                </div>
+                  </div>
+                  {e.segundo && (
+                    <div className="mb-card-lider">
+                      <Foto c={e.segundo} />
+                      <span className="mb-card-lider-texto">
+                        <strong>{e.segundo.nome}</strong>
+                        <span>{e.segundo.partido}</span>
+                        <span className="mb-card-lider-placar">
+                          {pct(e.segundo.percentual)}
+                          {vantagem !== null && vantagem !== undefined && (
+                            <> · {vantagem.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} p.p. à frente</>
+                          )}
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="mb-card-sem-dados">{rotuloLider}: aguardando totalização</div>
               )}

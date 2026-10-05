@@ -5,8 +5,8 @@
 <h1 align="center">Apuração 2026</h1>
 
 <p align="center">
-  Acompanhe a apuração das eleições brasileiras de 2026 em tempo real, com dados oficiais do TSE:<br>
-  todos os cargos, fotos dos candidatos, gráfico hora a hora e notificações no celular.
+  Acompanhe a totalização das eleições brasileiras de 2026 em tempo real, com dados oficiais do TSE:<br>
+  todos os cargos, fotos dos candidatos, mapa por estado, linha do tempo e notificações no celular.
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/tela-presidente.png" alt="Tela de Presidente no Distrito Federal antes do início da apuração: cards dos candidatos com foto oficial, partido e número nas caixinhas da urna" width="900">
+  <img src="docs/tela-inicio-desktop-1.png" alt="Página inicial: indicadores, placar de Presidente, mapa de liderança por estado e novidades" width="900">
 </p>
 
 ---
@@ -39,13 +39,17 @@
 - **Todos os cargos de 2026**: Presidente (Brasil e por UF), Governador, Senador, Deputado federal, Deputado estadual e Deputado distrital.
 - **Leitura em segundos**: quem lidera, por quantos pontos e votos, quanto falta para os 50% (Presidente e Governador), quem está dentro das vagas (Senado) e se a disputa já foi definida.
 - **Fotos oficiais** das candidaturas, vindas do próprio TSE, e o número de cada candidato nas caixinhas da urna eletrônica.
-- **Apuração por estado**: quanto cada UF já apurou, lado a lado, com a bandeira do estado e a foto de quem lidera para Presidente; ordene por andamento, nome ou região. Os votos do exterior aparecem à parte.
+- **Mapa colorido por candidato**: cada estado na cor de quem lidera, com a foto do líder ao lado da sigla; alternância entre Presidente, Governador e Senador (no Senado, mostra os dois mais votados).
+- **Cards por região**: Norte, Nordeste, Centro-Oeste, Sudeste e Sul agrupam os estados, com o total já apurado da região e o candidato na frente de cada uma.
+- **Apuração por estado**: quanto cada UF já apurou, lado a lado, com a bandeira do estado e a foto de quem lidera; ordene por andamento, nome ou região. Os votos do exterior aparecem à parte.
 - **Visão de cada estado**: toque num estado e veja todos os cargos dele de uma vez, com os mais votados para Presidente, Governador, Senado e deputados.
-- **Gráfico de evolução** com todos os candidatos, hora a hora ou a cada atualização do TSE, com o histórico guardado no servidor (quem chega às 22h vê a noite inteira).
+- **Gráfico de evolução** com todos os candidatos, a cada 10 minutos ou a cada atualização do TSE, com o histórico guardado no servidor (quem chega às 22h vê a noite inteira).
+- **Linha do tempo de novidades** ("O que está acontecendo agora"): marcos, viradas, estados concluídos e a conclusão com o resultado, com filtros e notificação própria.
+- **Notícias por IA (opcional)**: com `DEEPSEEK_API_KEY`, a DeepSeek reescreve o texto das notícias de Presidente, sempre sobre os fatos já detectados.
 - **Ao vivo**: a tela se atualiza sozinha assim que o TSE publica dados novos, sem recarregar.
-- **Notificações no celular (PWA)**: siga uma disputa e receba aviso no início da apuração, a cada 25%, em viradas e quando o resultado sair.
+- **Notificações no celular (PWA)**: siga uma disputa — ou o canal de novidades — e receba aviso no início, a cada 25%, em viradas, na conclusão e quando o resultado sair.
 - **Busca** por nome, número ou partido nas listas de deputados (mais de mil candidatos em SP).
-- **Modo escuro**, acessível e pensado primeiro para o celular.
+- **Tema escuro e claro**, com alternador manual, acessível e pensado primeiro para o celular.
 
 > [!NOTE]
 > Projeto independente, **sem vínculo com o TSE**. Os dados vêm dos arquivos públicos de resultados em `resultados.tse.jus.br`. Em caso de divergência, vale o resultado oficial do TSE.
@@ -53,27 +57,33 @@
 ## Telas
 
 <details>
-<summary>Ver as telas (início, cargos, estados)</summary>
+<summary>Ver as telas (desktop e celular)</summary>
 
-| Início | Presidente |
+| Início (desktop) | Início (celular) |
 |---|---|
-| ![Início: placar nacional, seu estado e andamento pelo país](docs/tela-inicio.png) | ![Presidente](docs/tela-presidente.png) |
+| ![Início (topo)](docs/tela-inicio-desktop-1.png)<br>![Início (meio)](docs/tela-inicio-desktop-2.png)<br>![Início (fim)](docs/tela-inicio-desktop-3.png) | ![Início no celular](docs/tela-inicio-mobile.png) |
 
-| Governador | Senador |
+| Candidatos (desktop) | Candidatos (celular) |
 |---|---|
-| ![Governador](docs/tela-governador.png) | ![Senador](docs/tela-senador.png) |
+| ![Candidatos: cards, evolução e por estado](docs/tela-candidatos-desktop.png) | ![Candidatos no celular](docs/tela-candidatos-mobile.png) |
 
-| Deputado federal | Deputado estadual | Deputado distrital |
-|---|---|---|
-| ![Deputado federal](docs/tela-deputado-federal.png) | ![Deputado estadual](docs/tela-deputado-estadual.png) | ![Deputado distrital](docs/tela-deputado-distrital.png) |
-
-| Apuração por estado | Visão de um estado |
+| Mapa (desktop) | Mapa (celular) |
 |---|---|
-| ![Apuração por estado](docs/tela-estado-apuracao.png) | ![Visão de um estado](docs/tela-estado-detalhe.png) |
+| ![Mapa colorido por quem lidera em cada estado](docs/tela-mapa-desktop.png) | ![Mapa no celular](docs/tela-mapa-mobile.png) |
+
+| Novidades (desktop) | Novidades (celular) |
+|---|---|
+| ![Linha do tempo de novidades](docs/tela-noticias-desktop.png) | ![Novidades no celular](docs/tela-noticias-mobile.png) |
+
+| Por estado (desktop) | Visão de um estado (desktop) |
+|---|---|
+| ![Totalização por estado](docs/tela-estados-desktop.png) | ![Visão de um estado](docs/tela-estados-detalhe-desktop.png) |
+
+| Sobre (desktop) | Mais (celular) |
+|---|---|
+| ![Sobre o projeto](docs/tela-sobre-desktop.png) | ![Mais no celular](docs/tela-mais-mobile.png) |
 
 </details>
-
-Próximos passos: veja a [proposta de redesign](docs/proposta-redesign.md) (central de acompanhamento com tema escuro, mapa, linha do tempo e navegação inferior no celular).
 
 ## Rodando em 1 minuto
 
@@ -115,7 +125,7 @@ Algumas decisões que fazem diferença na noite da eleição:
 | Atualizar a tela sem cada aparelho perguntar "mudou?" a cada poucos segundos | **Server-Sent Events**: o servidor avisa quando o TSE publica uma versão nova; sem SSE disponível, a tela volta sozinha para consultas periódicas |
 | Mil aparelhos buscando o mesmo resultado no mesmo segundo | O aviso só diz "tem versão nova"; cada aparelho espera um tempo aleatório proporcional à audiência antes de buscar, e o servidor serializa e comprime cada versão **uma única vez** |
 | Baixar de novo o que o aparelho já tem | **ETag + 304** quando o TSE não mudou, e histórico **incremental** (`?desde=`) |
-| Quem chega tarde não vê a evolução | Cada versão do TSE vai para o **SQLite**; o gráfico hora a hora sai de uma consulta com janela por hora de Brasília |
+| Quem chega tarde não vê a evolução | Cada versão do TSE vai para o **SQLite**; o gráfico sai de uma consulta com janela de 10 minutos em Brasília |
 | Notificação que vira spam | Avisos só nos momentos que importam, com estado persistido (ninguém recebe aviso repetido após restart) e expiração de 30 min |
 
 Números medidos num teste de carga local (Deputado federal SP, o JSON mais pesado):
@@ -135,11 +145,16 @@ Tudo por variáveis de ambiente (veja [`.env.example`](.env.example)). Com Docke
 | `ELEICAO_FEDERAL` / `ELEICAO_ESTADUAL` | `6257` / `6259` | Códigos da eleição no TSE. No 2º turno, troque: `npm run eleicoes` lista os códigos publicados |
 | `TURNO` | `1º turno` | Texto exibido no topo |
 | `CACHE_SEGUNDOS` | `30` | Intervalo de consulta ao TSE |
-| `MONITORAR` | `br:1` | Disputas coletadas mesmo sem ninguém na tela. Formato `uf:cargo`, `*` vale todos (ex.: `br:1,*:3,*:5`) |
+| `MONITORAR` | `br:1` | Disputas coletadas mesmo sem ninguém na tela. Formato `uf:cargo`, `*` vale todos (ex.: `br:1,*:1,*:3,*:5`) |
 | `MAX_CONEXOES` | `5000` | Conexões ao vivo simultâneas; acima disso o aparelho volta às consultas periódicas |
 | `MAX_INSCRICOES` | `50000` | Aparelhos inscritos em notificações |
 | `VAPID_CONTATO` | — | Contato exigido pelos serviços de push (`mailto:` ou `https:`). Sem ele, a Apple pode recusar notificações |
 | `VAPID_PUBLICA` / `VAPID_PRIVADA` | geradas sozinhas | Chaves das notificações. Se vazias, são criadas na 1ª execução e guardadas no volume |
+| `DEEPSEEK_API_KEY` | — | Chave da DeepSeek. Sem ela, a linha do tempo usa só as frases-modelo do código |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | Modelo usado para reescrever as notícias |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Endereço da API da DeepSeek |
+| `IA_INTERVALO_MIN` | `15` | Minutos entre duas chamadas à IA (custo e latência) |
+| `NOTICIA_INTERVALO_MIN` | `5` | Minutos entre os balanços periódicos de Presidente/Brasil |
 | `PORTA_HOST` | `3000` | Porta publicada pelo Docker |
 
 Códigos dos cargos: `1` Presidente, `3` Governador, `5` Senador, `6` Dep. federal, `7` Dep. estadual, `8` Dep. distrital.
@@ -157,16 +172,19 @@ Códigos dos cargos: `1` Presidente, `3` Governador, `5` Senador, `6` Dep. feder
 npm run dev:api     # backend com recarga automática (porta 3000)
 npm run dev:web     # frontend Vite com proxy para a API
 npm run typecheck   # tipos do backend e do frontend
-npm run simular     # cria data/simulado.db com uma apuração fictícia para testar o gráfico
+npm run simular     # cria data/simulado.db com uma apuração fictícia para testar
 ```
 
 ```
 server/    backend em TypeScript, executado direto pelo Node 24 (sem etapa de build)
   tse.ts            único ponto que conhece o formato do JSON do TSE
-  historico.ts      SQLite: snapshots, consulta hora a hora e incremental
+  historico.ts      SQLite: snapshots, consulta por faixa de 10 min e incremental
   eventos.ts        conexões ao vivo (SSE)
+  novidades.ts      linha do tempo: marcos, viradas, conclusão e balanços periódicos
   notificacoes.ts   Web Push: inscrições, detecção de marcos e fila de envio
+  ia.ts             redação de notícias pela DeepSeek (opcional, via DEEPSEEK_API_KEY)
 web/       frontend React + Vite + Recharts, service worker e manifest do PWA
+  componente/MapaBrasil.tsx   mapa do Brasil (andamento e líder por estado)
 shared/    tipos usados pelo backend e pelo frontend
 ```
 

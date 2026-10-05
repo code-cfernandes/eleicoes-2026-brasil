@@ -71,7 +71,9 @@ export interface EstadoPanorama {
   instante: number | null;
   /** Mais votado no estado, se a apuração já começou */
   lider: Candidato | null;
-  /** Diferença do líder para o 2º, em pontos percentuais */
+  /** 2º mais votado, quando o cargo tem mais de uma vaga (Senado); ausente na vaga única */
+  segundo?: Candidato;
+  /** Diferença que decide: vaga única = 1º − 2º; Senado = 2º − 3º (margem da última vaga) */
   vantagem: number | null;
   /** Contagem exata de seções, para agregar o total por região; ausente em respostas antigas */
   secoesTotalizadas?: number;

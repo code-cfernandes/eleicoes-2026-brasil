@@ -7,9 +7,9 @@ import { Avisos } from './Avisos.tsx';
 import { Bandeira } from './Bandeira.tsx';
 import { Foto } from './Cartao.tsx';
 import { Evolucao } from './Evolucao.tsx';
-import { MapaBrasil } from './MapaBrasil.tsx';
+import { MapaMini } from './MapaMini.tsx';
 import { Novidades } from './Novidades.tsx';
-import { corFixa, corSerie, MAX_SERIES, type Tema } from '../paleta.ts';
+import { MAX_SERIES, type Tema } from '../paleta.ts';
 import { ResumoLideranca } from './ResumoLideranca.tsx';
 
 // Página inicial: o que a maioria quer saber em poucos segundos, sem precisar escolher
@@ -262,18 +262,7 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
           )}
         </section>
 
-        <section className="inicio-bloco inicio-mapa-mini" aria-labelledby="inicio-mapa-titulo">
-          <div className="inicio-bloco-cabecalho">
-            <h2 id="inicio-mapa-titulo">Liderança por estado</h2>
-            <button type="button" className="inicio-lista-completa" onClick={onAbrirMapa}>Ver mapa</button>
-          </div>
-          {panorama ? (
-            <MapaBrasil estados={panorama.estados} rotuloLider="Presidente" modo="lider"
-              corDoCandidato={(c) => corFixa(c.nome) ?? corSerie(tema, slots.get(c.numero))} onSelecionar={onAbrirEstado} />
-          ) : (
-            <p className="resumo-estados">Carregando…</p>
-          )}
-        </section>
+        <MapaMini intervaloMs={intervaloMs} onAbrirEstado={onAbrirEstado} onAbrirMapa={onAbrirMapa} />
       </div>
 
       <div className="inicio-grade-2col">
