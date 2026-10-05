@@ -251,15 +251,13 @@ export function App() {
     setDisputa(destino[s]);
     scrollTo({ top: 0 });
   };
-  const abrirCandidatos = (c: number) => { setDisputa({ cargo: c, uf: ufEstadual }); scrollTo({ top: 0 }); };
   const abrirEstado = (u: string) => { setDisputa({ cargo: VISAO_ESTADO, uf: u }); scrollTo({ top: 0 }); };
 
   const ehDisputa = cargo > 0;
 
   return (
     <div className="layout">
-      <SidebarDesktop cargos={cfg?.cargos ?? []} secao={secao} cargoCandidatos={cargo > 0 ? cargo : cfg?.cargos[0]?.codigo ?? 1}
-        onIr={ir} onAbrirCandidatos={abrirCandidatos} tema={tema} onAlternarTema={alternarTema} />
+      <SidebarDesktop secao={secao} onIr={ir} tema={tema} onAlternarTema={alternarTema} />
 
       <main className="conteudo">
         <header className="topo">

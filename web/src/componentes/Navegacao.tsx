@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Cargo } from '../../../shared/tipos.ts';
 import type { Tema } from '../paleta.ts';
 import { StatusDados } from './StatusDados.tsx';
 import {
-  IconeCandidatos, IconeDeputado, IconeGovernador, IconeInicio, IconeLua, IconeMais, IconeMapa,
-  IconeNovidades, IconePainel, IconePorEstado, IconePresidente, IconeSenador, IconeSobre, IconeSol,
+  IconeCandidatos, IconeInicio, IconeLua, IconeMais, IconeMapa,
+  IconeNovidades, IconePainel, IconePorEstado, IconeSobre, IconeSol,
 } from './Icones.tsx';
 
 // Navegação principal: sidebar recolhível no desktop (≥1024px), navegação inferior de
@@ -19,32 +18,9 @@ function salvarSidebarRecolhida(v: boolean) {
   try { localStorage.setItem(CHAVE_SIDEBAR, v ? '1' : '0'); } catch { /* modo privado: não lembra, sem problema */ }
 }
 
-function iconeCargo(codigo: number) {
-  switch (codigo) {
-    case 1: return IconePresidente;
-    case 3: return IconeGovernador;
-    case 5: return IconeSenador;
-    default: return IconeDeputado;
-  }
-}
-
-// Abreviação curta para o trilho recolhido (mais legível que ícones genéricos repetidos)
-function abreviarCargo(nome: string) {
-  if (nome.startsWith('Presidente')) return 'Pres';
-  if (nome.startsWith('Governador')) return 'Gov';
-  if (nome.startsWith('Senador')) return 'Sen';
-  if (nome === 'Deputado federal') return 'DF';
-  if (nome === 'Deputado estadual') return 'DE';
-  if (nome === 'Deputado distrital') return 'Dist';
-  return nome.slice(0, 4);
-}
-
 export interface PropsNavegacao {
-  cargos: Cargo[];
   secao: Secao;
-  cargoCandidatos: number;
   onIr: (s: Secao) => void;
-  onAbrirCandidatos: (cargo: number) => void;
   tema: Tema;
   onAlternarTema: () => void;
 }
@@ -53,7 +29,7 @@ export type Secao = 'inicio' | 'candidatos' | 'mapa' | 'novidades' | 'mais' | 'p
 
 // --- Sidebar desktop ---
 
-export function SidebarDesktop({ cargos, secao, cargoCandidatos, onIr, onAbrirCandidatos, tema, onAlternarTema }: PropsNavegacao) {
+export function SidebarDesktop({ secao, onIr, tema, onAlternarTema }: PropsNavegacao) {
   const [recolhida, setRecolhida] = useState(lerSidebarRecolhida);
   const alternar = () => setRecolhida((r) => { salvarSidebarRecolhida(!r); return !r; });
 
@@ -65,16 +41,12 @@ export function SidebarDesktop({ cargos, secao, cargoCandidatos, onIr, onAbrirCa
           <IconeInicio /><span>Início</span>
         </button>
 
-        {cargos.map((c) => {
-          const Icone = iconeCargo(c.codigo);
-          const ativo = secao === 'candidatos' && cargoCandidatos === c.codigo;
-          return (
-            <button key={c.codigo} type="button" className="sidebar-item" aria-current={ativo ? 'page' : undefined}
-              onClick={() => onAbrirCandidatos(c.codigo)} title={c.nome}>
-              <Icone /><span>{recolhida ? abreviarCargo(c.nome) : c.nome}</span>
-            </button>
-          );
-        })}
+        {/* Um único item "Candidatos": o cargo é escolhido pelas abas dentro da tela,
+            como no mobile (menos itens, mesma navegação) */}
+        <button type="button" className="sidebar-item" aria-current={secao === 'candidatos' ? 'page' : undefined}
+          onClick={() => onIr('candidatos')} title="Candidatos">
+          <IconeCandidatos /><span>Candidatos</span>
+        </button>
 
         <button type="button" className="sidebar-item" aria-current={secao === 'por-estado' || secao === 'visao-estado' ? 'page' : undefined}
           onClick={() => onIr('por-estado')} title="Por estado">

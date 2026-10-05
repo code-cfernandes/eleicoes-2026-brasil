@@ -129,7 +129,7 @@ button, input, select { font: inherit; color: inherit; }
   .sidebar-item svg { flex: none; }
   .sidebar-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sidebar-recolhida .sidebar-item { justify-content: center; }
-  .sidebar-recolhida .sidebar-item span { font: 700 .6875rem/1 'Barlow Condensed', sans-serif; text-transform: uppercase; letter-spacing: .02em; }
+  .sidebar-recolhida .sidebar-item span { display: none; }
   .sidebar-item:hover { background: var(--fundo); color: var(--tinta); }
   .sidebar-item[aria-current="page"] { background: color-mix(in srgb, var(--segundo-turno) 16%, transparent); color: var(--segundo-turno); }
   .sidebar-rodape { display: grid; gap: .6rem; }
