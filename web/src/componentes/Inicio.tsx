@@ -80,6 +80,7 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
   const [erro, setErro] = useState<string>();
   const [aoVivo, setAoVivo] = useState(false);
   const [verificadoEm, setVerificadoEm] = useState<number>();
+  const [encerrado, setEncerrado] = useState(cfg?.finalizado ?? false);
 
   const intervaloMs = cfg?.intervaloMs ?? 30_000;
 
@@ -145,6 +146,7 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
         const { instante, espalharMs } = JSON.parse((ev as MessageEvent<string>).data) as { instante: number | null; espalharMs?: number };
         if (instante !== versao) depois(() => void carregar(), Math.random() * (espalharMs ?? 2_000));
       });
+      fonte.addEventListener('finalizado', () => setEncerrado(true));
       fonte.onerror = () => {
         vivo = false; setAoVivo(false);
         if (fonte?.readyState === EventSource.CLOSED && !ctrl.signal.aborted) depois(conectar, 60_000);
@@ -221,7 +223,9 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
               {erro
                 ? 'Sem conexão'
                 : resultado
-                  ? aoVivo ? <><span className="ao-vivo" aria-hidden="true" />Ao vivo</> : `Atualizado ${dataHora(resultado.instante ?? Date.now())}`
+                  ? encerrado
+                    ? 'Encerrado'
+                    : aoVivo ? <><span className="ao-vivo" aria-hidden="true" />Ao vivo</> : `Atualizado ${dataHora(resultado.instante ?? Date.now())}`
                   : 'Carregando…'}
             </span>
           </div>

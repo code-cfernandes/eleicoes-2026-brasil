@@ -87,10 +87,13 @@ export function App() {
   const [destacado, setDestacado] = useState<string | null>(null);
   const [fixado, setFixado] = useState<string | null>(null);
   const [subAba, setSubAba] = useState<'resultados' | 'evolucao' | 'por-estado'>('resultados');
+  const [encerrado, setEncerrado] = useState(false);
   // Rola a aba ativa do seletor de cargo (dentro de "Candidatos") para o centro visível
   const abaAtivaRef = useRolarAbaAtiva(cargo);
 
-  useEffect(() => { buscarConfig().then(setCfg).catch((e: Error) => setErro(e.message)); }, []);
+  useEffect(() => {
+    buscarConfig().then((c) => { setCfg(c); setEncerrado(c.finalizado); }).catch((e: Error) => setErro(e.message));
+  }, []);
 
   const cargoAtual = cfg?.cargos.find((c) => c.codigo === cargo);
 
@@ -184,6 +187,7 @@ export function App() {
         const { instante, espalharMs } = JSON.parse((ev as MessageEvent<string>).data) as { instante: number | null; espalharMs?: number };
         if (instante !== versao) depois(() => void carregar(), Math.random() * (espalharMs ?? ESPALHAR_MS));
       });
+      fonte.addEventListener('finalizado', () => setEncerrado(true));
       fonte.onerror = () => {
         vivo = false; setAoVivo(false);
         // CONNECTING: o navegador já está reconectando. CLOSED: recusado (ex.: 503), tenta em 1 min
@@ -272,16 +276,16 @@ export function App() {
                 Eleições <span className="topo-ano">2026</span>
               </a>
             </h1>
-            <p className="topo-subtitulo">Totalização ao vivo · {cfg?.turno}</p>
+            <p className="topo-subtitulo">{encerrado ? 'Totalização encerrada' : 'Totalização ao vivo'} · {cfg?.turno}</p>
           </div>
 
           <div className="topo-status">
             {/* O indicador reflete a conexão SSE da disputa aberta; no Início (e nas demais
                 seções sem uma disputa específica) cada bloco mostra seu próprio "Ao vivo". */}
             {ehDisputa && (
-              <span className={`topo-ao-vivo${aoVivo ? ' topo-ao-vivo-ativo' : ''}`}>
+              <span className={`topo-ao-vivo${aoVivo && !encerrado ? ' topo-ao-vivo-ativo' : ''}`}>
                 <span className="ao-vivo" aria-hidden="true" />
-                {aoVivo ? 'AO VIVO' : 'Reconectando'}
+                {encerrado ? 'Totalização encerrada' : aoVivo ? 'AO VIVO' : 'Reconectando'}
               </span>
             )}
             {ehDisputa && resultado?.instante && (

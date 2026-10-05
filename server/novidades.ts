@@ -2,7 +2,7 @@ import { db } from './banco.ts';
 import { config, CARGOS, envNumero } from './config.ts';
 import { resumoAtual, votosTotaisAte } from './historico.ts';
 import { enviarNovidades, nomeProprio, type Deteccao } from './notificacoes.ts';
-import { CANAL_NOVIDADES, transmitir } from './eventos.ts';
+import { CANAL_NOVIDADES, transmitir, transmitirTodos } from './eventos.ts';
 import { iaDisponivel, intervaloIaMs, redigir } from './ia.ts';
 import { NOMES_UF } from '../shared/ufs.ts';
 import type { EventoApuracao, Resultado, TipoEvento } from '../shared/tipos.ts';
@@ -101,6 +101,16 @@ const sql = {
 let ultimoId = (sql.ultimoId.get() as { id: number }).id;
 let maiorInstante = 0; // relógio do TSE (maior geração vista), para os agregados pendentes
 export const idMaisRecente = () => ultimoId;
+
+// Estado global: quando todas as disputas coletadas fecham (100% + resultado definido),
+// o coletor para de consultar o TSE e a IA/balanços param de gerar notícias novas.
+let tudoConcluido = false;
+export const marcarTudoConcluido = () => {
+  if (tudoConcluido) return;
+  tudoConcluido = true;
+  transmitirTodos('finalizado', { finalizado: true });
+};
+export const estaTudoConcluido = () => tudoConcluido;
 
 // --- Formatação (pt-BR)
 const lugar = (uf: string) => NOMES_UF[uf] ?? uf.toUpperCase();
@@ -367,7 +377,7 @@ function aplicarRedigida(p: LinhaNovidade, textoIA: string) {
 
 // Recalcula as notícias antigas que ainda têm frase-modelo (chamado uma vez na subida)
 export async function backfillIA() {
-  if (!iaDisponivel() || processandoIA) return;
+  if (!iaDisponivel() || processandoIA || estaTudoConcluido()) return;
   processandoIA = true;
   try {
     let n = 0;
@@ -388,7 +398,7 @@ export async function backfillIA() {
 }
 
 export async function redigirComIA() {
-  if (!iaDisponivel() || processandoIA || Date.now() - ultimaChamadaIA < intervaloIaMs()) return;
+  if (!iaDisponivel() || processandoIA || estaTudoConcluido() || Date.now() - ultimaChamadaIA < intervaloIaMs()) return;
   ultimaChamadaIA = Date.now();
   processandoIA = true;
   try {
@@ -410,7 +420,7 @@ export async function redigirComIA() {
 let ultimaGeracaoPeriodica = 0;
 
 export function gerarResumoPeriodico() {
-  if (Date.now() - ultimaGeracaoPeriodica < NOTICIA_INTERVALO_MS) return;
+  if (estaTudoConcluido() || Date.now() - ultimaGeracaoPeriodica < NOTICIA_INTERVALO_MS) return;
   ultimaGeracaoPeriodica = Date.now();
 
   const r = resumoAtual('br', 1);

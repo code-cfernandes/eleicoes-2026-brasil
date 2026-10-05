@@ -66,6 +66,14 @@ export function transmitir(canal: string, evento: string, dados: unknown) {
   for (const res of grupo) escrever(res, msg);
 }
 
+// Envia um evento a todas as conexões abertas, em todos os canais (ex.: "finalizado")
+export function transmitirTodos(evento: string, dados: unknown) {
+  const msg = `event: ${evento}\ndata: ${JSON.stringify(dados)}\n\n`;
+  for (const grupo of assinantes.values()) {
+    for (const res of grupo) escrever(res, msg);
+  }
+}
+
 // Disputas com alguém assistindo agora: entram no coletor automaticamente (canais globais não)
 export const disputasAssistidas = (): [string, number][] =>
   [...assinantes.keys()].filter((k) => k.includes(':')).map((k) => {

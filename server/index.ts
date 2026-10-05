@@ -9,7 +9,7 @@ import { registrar, lerHistorico } from './historico.ts';
 import { fechar } from './banco.ts';
 import { obterFoto } from './fotos.ts';
 import { assinar, CANAL_NOVIDADES, conexoesAbertas, disputasAssistidas, encerrarTodas, notificar } from './eventos.ts';
-import { backfillIA, gerarResumoPeriodico, idMaisRecente, lerNovidades, lerNovidadesAntes, processar, pulsar, reconstruirHistorico, redigirComIA } from './novidades.ts';
+import { backfillIA, estaTudoConcluido, gerarResumoPeriodico, idMaisRecente, lerNovidades, lerNovidadesAntes, marcarTudoConcluido, processar, pulsar, reconstruirHistorico, redigirComIA } from './novidades.ts';
 import {
   avaliar, chavePublica, deixarDeSeguir, deixarNovidades, disputasComInscritos, disputasSeguidas, enviar,
   estatisticasPush, inscricaoValida, renovar, seguir, segueNovidades, seguirNovidades,
@@ -21,13 +21,20 @@ app.use(compression()); // JSON de deputados cai de ~250 kB para ~35 kB
 const cache = new Map<string, { expira: number; promessa: Promise<Resultado> }>();
 const versoes = new Map<string, number | null>(); // última geração do TSE vista por disputa
 
+// Uma disputa está concluída quando o TSE marcou o resultado (eleito/2º turno) com 100% das seções
+function concluida(d: Resultado): boolean {
+  if (d.secoesTotalizadas < 100) return false;
+  return d.candidatos.some((c) => c.eleito) || d.candidatos.some((c) => /2º turno/i.test(c.situacao));
+}
+
 // Cache curto + dedupe: N visitantes simultâneos geram 1 requisição ao TSE por janela.
 // Toda resposta nova do TSE vai para o histórico, venha do coletor ou de um visitante,
 // e quem está com a disputa aberta recebe o aviso na hora (SSE).
 function obter(uf: string, cargo: number): Promise<Resultado> {
   const chave = `${uf}:${cargo}`;
   const hit = cache.get(chave);
-  if (hit && hit.expira > Date.now()) return hit.promessa;
+  // Encerrado: serve o último resultado conhecido para sempre, sem nova consulta ao TSE
+  if (hit && (estaTudoConcluido() || hit.expira > Date.now())) return hit.promessa;
 
   const promessa = buscarResultado(uf, cargo).then((d) => {
     try { registrar(uf, cargo, d); } catch (e) { console.error(`[histórico ${chave}]`, (e as Error).message); }
@@ -47,7 +54,7 @@ function obter(uf: string, cargo: number): Promise<Resultado> {
     cache.delete(chave); // não guarda erro em cache
     throw err;
   });
-  cache.set(chave, { expira: Date.now() + config.cacheMs, promessa });
+  cache.set(chave, { expira: estaTudoConcluido() ? Infinity : Date.now() + config.cacheMs, promessa });
   return promessa;
 }
 
@@ -263,6 +270,7 @@ app.get('/api/config', (_req, res) => {
     chavePush: chavePublica,
     turno: config.turno,
     inicioApuracao: config.inicioApuracao,
+    finalizado: estaTudoConcluido(),
     // Só oferece cargos cuja eleição está configurada no .env
     cargos: Object.values(CARGOS).filter((c) => config.eleicao[c.eleicao]),
   };
@@ -359,22 +367,36 @@ app.use(express.static(fileURLToPath(new URL('../dist/web', import.meta.url)), {
 // Poucas requisições simultâneas, para não disparar dezenas de downloads de uma vez.
 let coletando = false;
 async function coletarTudo() {
-  if (coletando) return; // rodada anterior ainda não terminou
+  if (coletando || estaTudoConcluido()) return;
   coletando = true;
   // MONITORAR (sempre) + o que alguém está assistindo agora (só enquanto houver alguém)
   // e o que algum aparelho segue por notificação (o aviso precisa sair mesmo com a tela fechada)
   const pares = new Map([...config.monitorar, ...disputasAssistidas(), ...disputasComInscritos()]
     .map((p) => [p.join(':'), p] as const));
   const fila = [...pares.values()];
+  const resultados: (Resultado | null)[] = [];
   const trabalhador = async () => {
     for (let par = fila.shift(); par; par = fila.shift()) {
       const [uf, cargo] = par;
-      await obter(uf, cargo).catch((e: Error) => console.error(`[coleta ${uf}:${cargo}]`, e.message));
+      try {
+        resultados.push(await obter(uf, cargo));
+      } catch (e) {
+        console.error(`[coleta ${uf}:${cargo}]`, (e as Error).message);
+        resultados.push(null);
+      }
     }
   };
   await Promise.all(Array.from({ length: 4 }, trabalhador));
   pulsar(); // agregados de deputados que já esperaram o suficiente
   coletando = false;
+
+  // Todas as disputas coletadas fecharam (100% + resultado definido)? Então não há mais o que
+  // buscar: encerra as consultas ao TSE e passa a servir da base/histórico que já existe.
+  if (resultados.length && resultados.every((r) => r && concluida(r))) {
+    marcarTudoConcluido();
+    clearInterval(coletor);
+    console.log('[coleta] totalização concluída — consultas ao TSE encerradas');
+  }
 }
 
 console.log(`Monitorando ${config.monitorar.length} disputa(s): ${config.monitorar.map((p) => p.join(':')).join(', ')}`);

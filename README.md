@@ -21,7 +21,7 @@
 
 <p align="center">
   <a href="https://eleicoes.code-cfernandes.com"><b>Acompanhe ao vivo em eleicoes.code-cfernandes.com</b></a><br>
-  <sub>No ar durante o 1º e o 2º turno de 2026. No celular, instale o app e ative os avisos da sua disputa.</sub>
+  <sub>No ar até 28/10/2026 (1º e 2º turno). No celular, instale o app e ative os avisos da sua disputa.</sub>
 </p>
 
 <p align="center">
@@ -47,6 +47,7 @@
 - **Linha do tempo de novidades** ("O que está acontecendo agora"): marcos, viradas, estados concluídos e a conclusão com o resultado, com filtros e notificação própria.
 - **Notícias por IA (opcional)**: com `DEEPSEEK_API_KEY`, a DeepSeek reescreve o texto das notícias de Presidente, sempre sobre os fatos já detectados.
 - **Ao vivo**: a tela se atualiza sozinha assim que o TSE publica dados novos, sem recarregar.
+- **Encerra sozinho**: quando todas as disputas fecham (100% + resultado definido), o servidor para de consultar o TSE e passa a servir do histórico; a tela avisa "Totalização encerrada".
 - **Notificações no celular (PWA)**: siga uma disputa — ou o canal de novidades — e receba aviso no início, a cada 25%, em viradas, na conclusão e quando o resultado sair.
 - **Busca** por nome, número ou partido nas listas de deputados (mais de mil candidatos em SP).
 - **Tema escuro e claro**, com alternador manual, acessível e pensado primeiro para o celular.
@@ -127,6 +128,7 @@ Algumas decisões que fazem diferença na noite da eleição:
 | Baixar de novo o que o aparelho já tem | **ETag + 304** quando o TSE não mudou, e histórico **incremental** (`?desde=`) |
 | Quem chega tarde não vê a evolução | Cada versão do TSE vai para o **SQLite**; o gráfico sai de uma consulta com janela de 10 minutos em Brasília |
 | Notificação que vira spam | Avisos só nos momentos que importam, com estado persistido (ninguém recebe aviso repetido após restart) e expiração de 30 min |
+| Continuar consultando o TSE depois que tudo fechou | Quando todas as disputas coletadas fecham (100% + resultado definido), o coletor **para** e o servidor passa a servir do histórico; um evento SSE `finalizado` avisa quem está com a tela aberta |
 
 Números medidos num teste de carga local (Deputado federal SP, o JSON mais pesado):
 

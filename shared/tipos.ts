@@ -121,6 +121,8 @@ export interface ConfigPublica {
   /** Início da apuração (epoch ms), para a contagem regressiva; null se não configurado */
   inicioApuracao: number | null;
   turno: string;
+  /** True quando todas as disputas fecharam e o servidor parou de consultar o TSE */
+  finalizado: boolean;
   cargos: Cargo[];
 }
 
