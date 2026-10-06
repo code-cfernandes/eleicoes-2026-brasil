@@ -9,8 +9,7 @@
     "dev:web": "vite",
     "build": "tsc -p tsconfig.json && tsc -p web/tsconfig.json && vite build",
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
-    "eleicoes": "node --env-file-if-exists=.env scripts/listar-eleicoes.ts",
-    "simular": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/simular.ts"
+    "eleicoes": "node --env-file-if-exists=.env scripts/listar-eleicoes.ts"
   },
   "dependencies": {
     "compression": "^1.8.2",

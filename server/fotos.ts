@@ -8,7 +8,9 @@ import { ufDaFoto, urlFoto } from './tse.ts';
 const emAndamento = new Map<string, Promise<Buffer | null>>();
 const ausentes = new Map<string, number>(); // chave -> expira (não martela o TSE com 404)
 
-export function obterFoto(uf: string, cargo: number, sqcand: string): Promise<Buffer | null> {
+// O arquivo em disco não depende do turno (o sqcand do candidato é o mesmo); o turno só escolhe
+// de qual eleição do TSE baixar quando a foto ainda não está no cache.
+export function obterFoto(uf: string, cargo: number, sqcand: string, turno: number): Promise<Buffer | null> {
   const dir = join(config.fotosDir, config.ciclo, String(cargo), ufDaFoto(uf, cargo));
   const arquivo = join(dir, `${sqcand}.jpeg`);
   if ((ausentes.get(arquivo) ?? 0) > Date.now()) return Promise.resolve(null);
@@ -17,7 +19,7 @@ export function obterFoto(uf: string, cargo: number, sqcand: string): Promise<Bu
   if (pendente) return pendente;
 
   const promessa = readFile(arquivo).catch(async () => {
-    const res = await fetch(urlFoto(uf, cargo, sqcand), { signal: AbortSignal.timeout(10_000) });
+    const res = await fetch(urlFoto(uf, cargo, sqcand, turno), { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) {
       ausentes.set(arquivo, Date.now() + 10 * 60_000);
       return null;

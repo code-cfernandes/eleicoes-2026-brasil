@@ -1,18 +1,18 @@
-import { config, CARGOS } from './config.ts';
+import { config, CARGOS, defTurno } from './config.ts';
 import type { Candidato, Resultado, SaudeDados, Totais } from '../shared/tipos.ts';
 
 const pad = (n: string | number, len: number) => String(n).padStart(len, '0');
 
-function codigoEleicao(cargo: number): string {
+function codigoEleicao(cargo: number, turno: number): string {
   const tipo = CARGOS[cargo]?.eleicao;
-  const cod = tipo && config.eleicao[tipo];
-  if (!cod) throw new Error(`Código de eleição "${tipo}" não configurado no .env`);
+  const cod = tipo && defTurno(turno)?.eleicao[tipo];
+  if (!cod) throw new Error(`Código de eleição "${tipo}" do ${turno}º turno não configurado no .env`);
   return String(Number(cod));
 }
 
 // /{ciclo}/{eleicao}/dados/{uf}/{uf}-c{cargo}-e{eleicao}-u.json
-export function urlResultado(uf: string, cargo: number): string {
-  const cod = codigoEleicao(cargo);
+export function urlResultado(uf: string, cargo: number, turno: number): string {
+  const cod = codigoEleicao(cargo, turno);
   return `${config.base}/${config.ciclo}/${cod}/dados/${uf}/${uf}-c${pad(cargo, 4)}-e${pad(cod, 6)}-u.json`;
 }
 
@@ -20,8 +20,8 @@ export function urlResultado(uf: string, cargo: number): string {
 export const ufDaFoto = (uf: string, cargo: number) => (CARGOS[cargo]?.eleicao === 'federal' ? 'br' : uf);
 
 // /{ciclo}/{eleicao}/fotos/{uf}/{sqcand}.jpeg
-export const urlFoto = (uf: string, cargo: number, sqcand: string) =>
-  `${config.base}/${config.ciclo}/${codigoEleicao(cargo)}/fotos/${ufDaFoto(uf, cargo)}/${sqcand}.jpeg`;
+export const urlFoto = (uf: string, cargo: number, sqcand: string, turno: number) =>
+  `${config.base}/${config.ciclo}/${codigoEleicao(cargo, turno)}/fotos/${ufDaFoto(uf, cargo)}/${sqcand}.jpeg`;
 
 const num = (v: unknown) => Number(String(v ?? 0).replace(',', '.')) || 0;
 
@@ -45,7 +45,7 @@ interface JsonTSE {
 
 // ÚNICO ponto que conhece o formato do JSON do TSE.
 // Se o leiaute mudar, só esta função precisa ser ajustada.
-export function normalizar(json: JsonTSE, uf: string, cargo: number): Omit<Resultado, 'cargo' | 'nomeCargo' | 'uf'> {
+export function normalizar(json: JsonTSE, uf: string, cargo: number, turno: number): Omit<Resultado, 'turno' | 'cargo' | 'nomeCargo' | 'uf'> {
   const carg = json.carg?.[0];
   const candidatos: Candidato[] = (carg?.agr ?? [])
     .flatMap((a) => a.par ?? [])
@@ -54,10 +54,11 @@ export function normalizar(json: JsonTSE, uf: string, cargo: number): Omit<Resul
       nome: c.nmu || c.nm || c.n,
       partido: p.sg ?? '',
       sqcand: c.sqcand ?? '',
-      foto: c.sqcand ? `/api/foto/${cargo}/${uf}/${c.sqcand}` : '',
+      foto: c.sqcand ? `/api/foto/${cargo}/${uf}/${c.sqcand}?turno=${turno}` : '',
       votos: num(c.vap),
       percentual: num(c.pvap),
-      eleito: c.e === 's',
+      // O TSE marca e="s" também em quem foi para o 2º turno: eleito é só quem não está nessa situação
+      eleito: c.e === 's' && !/2º turno/i.test(c.st ?? ''),
       situacao: c.st ?? '',
     })))
     .sort((a, b) => b.votos - a.votos || a.nome.localeCompare(b.nome, 'pt-BR'));
@@ -84,6 +85,15 @@ export function normalizar(json: JsonTSE, uf: string, cargo: number): Omit<Resul
   };
 }
 
+// Resposta HTTP de erro do TSE (ex.: 404 = arquivo ainda não publicado)
+export class ErroTSE extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(`TSE respondeu ${status}`);
+    this.status = status;
+  }
+}
+
 // --- Saúde da coleta: medida aqui, no único ponto que fala com o TSE (rota /api/saude)
 const JANELA_FALHAS_MS = 10 * 60_000;
 const PESO_LATENCIA = 0.2; // média móvel exponencial: a última resposta pesa 20%
@@ -103,15 +113,17 @@ export function saudeTSE(): SaudeDados['tse'] {
   };
 }
 
-export async function buscarResultado(uf: string, cargo: number): Promise<Resultado> {
-  const url = urlResultado(uf, cargo); // erro de configuração não conta como falha do TSE
+export async function buscarResultado(uf: string, cargo: number, turno: number): Promise<Resultado> {
+  const url = urlResultado(uf, cargo, turno); // erro de configuração não conta como falha do TSE
   const inicio = Date.now();
   let json: JsonTSE;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) throw new Error(`TSE respondeu ${res.status}`);
+    if (!res.ok) throw new ErroTSE(res.status);
     json = (await res.json()) as JsonTSE;
   } catch (err) {
+    // 404 não é falha do TSE: o arquivo só ainda não foi publicado (ex.: 2º turno antes do dia)
+    if (err instanceof ErroTSE && err.status === 404) throw err;
     const agora = Date.now();
     saude.ultimaFalha = agora;
     falhas.push(agora);
@@ -122,6 +134,6 @@ export async function buscarResultado(uf: string, cargo: number): Promise<Result
   const ms = agora - inicio;
   saude.ultimaRespostaOk = agora;
   saude.latenciaMediaMs = saude.latenciaMediaMs === null ? ms : saude.latenciaMediaMs + PESO_LATENCIA * (ms - saude.latenciaMediaMs);
-  const d = normalizar(json, uf, cargo);
-  return { cargo, nomeCargo: CARGOS[cargo]!.nome, uf, ...d };
+  const d = normalizar(json, uf, cargo, turno);
+  return { turno, cargo, nomeCargo: CARGOS[cargo]!.nome, uf, ...d };
 }

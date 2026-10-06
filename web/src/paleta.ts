@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { semAcento } from './formato.ts';
 
 // Paleta categórica validada (separação para daltonismo) em cada modo.
 // A ordem é fixa; a cor segue o candidato, nunca a posição no placar.
@@ -66,13 +65,27 @@ export const corSerie = (tema: Tema, slot: number | undefined) =>
   slot === undefined ? NEUTROS[tema].contexto : SERIES[tema][slot]!;
 export const neutros = (tema: Tema) => NEUTROS[tema];
 
-// Cores fixas para candidatos específicos (escolha do dono do projeto); o resto usa a série
-// automática. As cores são variáveis CSS para acompanharem o tema claro/escuro.
-const CORES_FIXAS: { trecho: string; cor: string }[] = [
-  { trecho: 'lula', cor: 'var(--vermelho)' },
-  { trecho: 'flavio', cor: 'var(--s0)' },
-];
-export const corFixa = (nome: string): string | undefined => {
-  const n = semAcento(nome.toLowerCase());
-  return CORES_FIXAS.find((f) => n.includes(f.trecho))?.cor;
+// Finalistas do 2º turno: cada um na cor oficial do seu partido. Hue do registro de cores de
+// partidos da Wikipédia (Module:Political party, o mesmo dos mapas eleitorais); luminosidade
+// ajustada por tema em OKLCH e validada par a par (faixa, croma, daltonismo, visão normal e
+// contraste) com o validador do guia de dataviz. Valores em estilos.css (--partido-*).
+// Onde os dois lados do confronto têm o mesmo azul, um usa a cor secundária oficial do partido:
+// Acre (PP × Republicanos) -> Republicanos em verde; Tocantins (União × PSDB) -> PSDB em amarelo.
+// A chave é cargo:uf:número; Presidente vale para qualquer UF ('*').
+const FINALISTAS_2T: Record<string, string> = {
+  '1:*:13': 'pt', '1:*:22': 'pl',                         // Lula × Flávio Bolsonaro
+  '3:ac:11': 'pp', '3:ac:10': 'republicanos-verde',       // Mailza Assis × Alan Rick
+  '3:am:55': 'psd', '3:am:22': 'pl',                      // Omar Aziz × Professora Maria do Carmo
+  '3:df:11': 'pp', '3:df:13': 'pt',                       // Celina Leão × Leandro Grass
+  '3:es:10': 'republicanos', '3:es:15': 'mdb',            // Lorenzo Pazolini × Ricardo Ferraço
+  '3:rj:22': 'pl', '3:rj:55': 'psd',                      // Douglas Ruas × Eduardo Paes
+  '3:rn:44': 'uniao', '3:rn:13': 'pt',                    // Allyson × Cadu de Lula
+  '3:to:44': 'uniao', '3:to:45': 'psdb-amarelo',          // Professora Dorinha × Vicentinho Júnior
 };
+
+/** Cor de um finalista do 2º turno (variável CSS); undefined fora do 2º turno ou fora da lista */
+export function corDoFinalista(turno: number | undefined, cargo: number, uf: string | undefined, numero: string): string | undefined {
+  if ((turno ?? 1) < 2) return undefined;
+  const partido = (uf && FINALISTAS_2T[`${cargo}:${uf}:${numero}`]) || FINALISTAS_2T[`${cargo}:*:${numero}`];
+  return partido ? `var(--partido-${partido})` : undefined;
+}

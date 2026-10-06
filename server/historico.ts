@@ -27,23 +27,26 @@ db.exec(`
 
 // Migração aditiva e idempotente (o banco de produção já existe): colunas novas são NULLABLE,
 // snapshots antigos ficam com NULL. votos_totais (v.tv do TSE) alimenta o evento "ritmo".
+// turno: tudo o que foi gravado antes dele existir é do 1º turno (DEFAULT 1). O UNIQUE antigo
+// (uf, cargo, tse_em) continua valendo: os turnos têm datas de geração diferentes.
 const colunasSnapshot = new Set((db.prepare('PRAGMA table_info(snapshot)').all() as { name: string }[]).map((c) => c.name));
-for (const [coluna, tipo] of [['votos_totais', 'INTEGER'], ['validos', 'INTEGER']] as const) {
+for (const [coluna, tipo] of [['votos_totais', 'INTEGER'], ['validos', 'INTEGER'], ['turno', 'INTEGER NOT NULL DEFAULT 1']] as const) {
   if (!colunasSnapshot.has(coluna)) db.exec(`ALTER TABLE snapshot ADD COLUMN ${coluna} ${tipo}`);
 }
+db.exec('CREATE INDEX IF NOT EXISTS snapshot_turno_disputa ON snapshot (turno, uf, cargo, instante)');
 
 const inserirSnapshot = db.prepare(`
-  INSERT OR IGNORE INTO snapshot (uf, cargo, tse_em, instante, coletado_em, pst, votos_totais, validos)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+  INSERT OR IGNORE INTO snapshot (turno, uf, cargo, tse_em, instante, coletado_em, pst, votos_totais, validos)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 const inserirVoto = db.prepare(
   'INSERT INTO voto (snapshot_id, numero, nome, votos, percentual) VALUES (?, ?, ?, ?, ?)');
 
 // Grava o resultado se for uma geração nova do TSE (UNIQUE descarta repetidos).
-export function registrar(uf: string, cargo: number, d: Resultado): boolean {
+export function registrar(d: Resultado): boolean {
   if (!d.instante) return false;
   db.exec('BEGIN');
   try {
-    const r = inserirSnapshot.run(uf, cargo, d.atualizadoEm, d.instante, Date.now(), d.secoesTotalizadas,
+    const r = inserirSnapshot.run(d.turno, d.uf, d.cargo, d.atualizadoEm, d.instante, Date.now(), d.secoesTotalizadas,
       d.totais?.votosTotais ?? null, d.totais?.validos ?? null);
     if (r.changes) {
       for (const c of d.candidatos) inserirVoto.run(r.lastInsertRowid, c.numero, c.nome, c.votos, c.percentual);
@@ -59,10 +62,10 @@ export function registrar(uf: string, cargo: number, d: Resultado): boolean {
 // Votos totais do snapshot mais recente com instante <= `ate` (base do evento "ritmo")
 const totaisAte = db.prepare(`
   SELECT instante, votos_totais AS votos FROM snapshot
-  WHERE uf = ? AND cargo = ? AND instante <= ? AND votos_totais IS NOT NULL
+  WHERE turno = ? AND uf = ? AND cargo = ? AND instante <= ? AND votos_totais IS NOT NULL
   ORDER BY instante DESC LIMIT 1`);
-export const votosTotaisAte = (uf: string, cargo: number, ate: number) =>
-  totaisAte.get(uf, cargo, ate) as { instante: number; votos: number } | undefined;
+export const votosTotaisAte = (turno: number, uf: string, cargo: number, ate: number) =>
+  totaisAte.get(turno, uf, cargo, ate) as { instante: number; votos: number } | undefined;
 
 // Resumo do estado atual de uma disputa (base dos balanços periódicos em novidades.ts)
 export interface ResumoAtual {
@@ -74,8 +77,8 @@ export interface ResumoAtual {
 const snapshotResumo = db.prepare('SELECT instante, pst, votos_totais AS votosTotais FROM snapshot WHERE id = ?');
 const votosTop = db.prepare('SELECT numero, nome, votos, percentual FROM voto WHERE snapshot_id = ? ORDER BY votos DESC LIMIT 2');
 
-export function resumoAtual(uf: string, cargo: number): ResumoAtual | null {
-  const ultimo = maisRecente.get(uf, cargo) as { id: number } | undefined;
+export function resumoAtual(turno: number, uf: string, cargo: number): ResumoAtual | null {
+  const ultimo = maisRecente.get(turno, uf, cargo) as { id: number } | undefined;
   if (!ultimo) return null;
   const s = snapshotResumo.get(ultimo.id) as { instante: number; pst: number; votosTotais: number | null } | undefined;
   if (!s) return null;
@@ -91,13 +94,13 @@ const snapshots = db.prepare(`
   FROM (
     SELECT *, ROW_NUMBER() OVER (PARTITION BY ${FAIXA} ORDER BY instante DESC) AS ultimo_da_faixa
     FROM snapshot
-    WHERE uf = :uf AND cargo = :cargo AND pst > 0
+    WHERE turno = :turno AND uf = :uf AND cargo = :cargo AND pst > 0
   )
   WHERE (:todos OR ultimo_da_faixa = 1) AND instante > :desde
   ORDER BY instante`);
 
 const maisRecente = db.prepare(
-  'SELECT id FROM snapshot WHERE uf = ? AND cargo = ? AND pst > 0 ORDER BY instante DESC LIMIT 1');
+  'SELECT id FROM snapshot WHERE turno = ? AND uf = ? AND cargo = ? AND pst > 0 ORDER BY instante DESC LIMIT 1');
 
 const votos = db.prepare(`
   SELECT snapshot_id, numero, nome, votos, percentual FROM voto
@@ -117,15 +120,15 @@ type LinhaSnapshot = Omit<PontoHistorico, 'cand'> & { id: number };
 type LinhaVoto = PontoHistorico['cand'][number] & { snapshot_id: number };
 
 export function lerHistorico(
-  uf: string, cargo: number,
+  turno: number, uf: string, cargo: number,
   { por = 'hora', top = 10, desde = 0, so }: { por?: 'hora' | 'todos'; top?: number; desde?: number; so?: string[] } = {},
 ): RespostaHistorico {
-  const ultimo = maisRecente.get(uf, cargo) as { id: number } | undefined;
+  const ultimo = maisRecente.get(turno, uf, cargo) as { id: number } | undefined;
   if (!ultimo) return { numeros: [], pontos: [] };
 
   // `so`: candidatos específicos (o cliente pede o passado de quem acabou de entrar no top)
   const numeros = so ?? (topDoSnapshot.all(ultimo.id, top) as { numero: string }[]).map((r) => r.numero);
-  const pontos = snapshots.all({ uf, cargo, todos: por === 'todos' ? 1 : 0, desde }) as LinhaSnapshot[];
+  const pontos = snapshots.all({ turno, uf, cargo, todos: por === 'todos' ? 1 : 0, desde }) as LinhaSnapshot[];
   if (!pontos.length) return { numeros, pontos: [] };
 
   const linhas = votos.all({ ids: JSON.stringify(pontos.map((p) => p.id)), numeros: JSON.stringify(numeros) }) as LinhaVoto[];

@@ -41,6 +41,8 @@ export interface Totais {
 }
 
 export interface Resultado {
+  /** 1 ou 2 */
+  turno: number;
   cargo: number;
   nomeCargo: string;
   uf: string;
@@ -107,6 +109,24 @@ export interface VisaoEstado {
   cargos: ResumoCargo[];
 }
 
+// O que está em disputa num turno (GET /api/disputas?turno=): cada disputa com seus candidatos,
+// mesmo antes de haver votos. No 2º turno: Presidente (uf 'br') e Governador nas UFs com 2º turno.
+export interface DisputaDoTurno {
+  cargo: number;
+  nome: string;
+  uf: string;
+  /** % de seções totalizadas (0 antes da apuração) */
+  pst: number;
+  instante: number | null;
+  /** Na ordem do TSE (mais votado primeiro); antes da apuração, os finalistas zerados */
+  candidatos: Candidato[];
+}
+
+export interface RespostaDisputas {
+  turno: number;
+  disputas: DisputaDoTurno[];
+}
+
 export interface RespostaHistorico {
   /** Candidatos que o gráfico acompanha (top N do snapshot mais recente) */
   numeros: string[];
@@ -114,14 +134,29 @@ export interface RespostaHistorico {
   pontos: PontoHistorico[];
 }
 
+// Um turno da eleição. Todas as rotas de dados aceitam ?turno=N (padrão: o turno atual).
+export interface TurnoPublico {
+  numero: number;
+  /** "1º turno", "2º turno" */
+  nome: string;
+  /** Início da apuração (epoch ms), para a contagem regressiva; null se não configurado */
+  inicioApuracao: number | null;
+  /** True quando todas as disputas fecharam (turnos anteriores ao atual, sempre) */
+  finalizado: boolean;
+  /** Cargos com disputa neste turno; no 2º turno, só as UFs que tiveram 2º turno */
+  cargos: Cargo[];
+}
+
 export interface ConfigPublica {
   intervaloMs: number;
   /** Chave pública VAPID para inscrever o aparelho em notificações */
   chavePush: string;
-  /** Início da apuração (epoch ms), para a contagem regressiva; null se não configurado */
+  /** Turnos configurados, em ordem; o último é o atual (o único coletado ao vivo) */
+  turnos: TurnoPublico[];
+  turnoAtual: number;
+  // Campos abaixo: espelho do turno atual (compatibilidade com telas antigas em cache)
   inicioApuracao: number | null;
   turno: string;
-  /** True quando todas as disputas fecharam e o servidor parou de consultar o TSE */
   finalizado: boolean;
   cargos: Cargo[];
 }
@@ -140,6 +175,7 @@ export type TipoEvento =
 
 export interface EventoApuracao {
   id: number;
+  turno: number;
   /** epoch ms (horário da geração do TSE que originou o evento) */
   instante: number;
   tipo: TipoEvento;

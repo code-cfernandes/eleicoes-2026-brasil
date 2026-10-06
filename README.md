@@ -144,13 +144,14 @@ Tudo por variáveis de ambiente (veja [`.env.example`](.env.example)). Com Docke
 
 | Variável | Padrão | Para que serve |
 |---|---|---|
-| `ELEICAO_FEDERAL` / `ELEICAO_ESTADUAL` | `6257` / `6259` | Códigos da eleição no TSE. No 2º turno, troque: `npm run eleicoes` lista os códigos publicados |
-| `TURNO` | `1º turno` | Texto exibido no topo |
+| `ELEICAO_FEDERAL` / `ELEICAO_ESTADUAL` | descobertos no TSE | Códigos do 1º turno. Vazios, o servidor acha na lista de eleições do TSE pelo cargo (Presidente/Governador). Preencha só para forçar |
+| `ELEICAO_FEDERAL_2T` / `ELEICAO_ESTADUAL_2T` | descobertos no TSE | Códigos do 2º turno, que vêm do campo `cdt2` do 1º turno. Conhecido o 2º turno, ele vira o atual (coletado ao vivo) e o padrão da tela; o 1º fica arquivado no seletor de turno. As disputas do 2º turno saem do resultado do 1º; antes de o TSE publicar os arquivos, a tela mostra os finalistas zerados |
+| `INICIO_APURACAO` / `INICIO_APURACAO_2T` | 04/10 e 25/10, 17h | Início da totalização de cada turno (contagem regressiva no Início) |
 | `CACHE_SEGUNDOS` | `30` | Intervalo de consulta ao TSE |
-| `MONITORAR` | `br:1` | Disputas coletadas mesmo sem ninguém na tela. Formato `uf:cargo`, `*` vale todos (ex.: `br:1,*:1,*:3,*:5`) |
+| `MONITORAR` | `br:1,*:1,*:3` | Disputas coletadas mesmo sem ninguém na tela. Formato `uf:cargo`, `*` vale todos (ex.: `br:1,*:1,*:3,*:5`). O que não existe no turno atual é descartado sozinho |
 | `MAX_CONEXOES` | `5000` | Conexões ao vivo simultâneas; acima disso o aparelho volta às consultas periódicas |
 | `MAX_INSCRICOES` | `50000` | Aparelhos inscritos em notificações |
-| `VAPID_CONTATO` | — | Contato exigido pelos serviços de push (`mailto:` ou `https:`). Sem ele, a Apple pode recusar notificações |
+| `VAPID_CONTATO` | — | Contato exigido pelos serviços de push: e-mail (o `mailto:` é completado sozinho) ou `https:`. Valor inválido não derruba o site, só gera aviso no log. Sem ele, a Apple pode recusar notificações |
 | `VAPID_PUBLICA` / `VAPID_PRIVADA` | geradas sozinhas | Chaves das notificações. Se vazias, são criadas na 1ª execução e guardadas no volume |
 | `DEEPSEEK_API_KEY` | — | Chave da DeepSeek. Sem ela, a linha do tempo usa só as frases-modelo do código |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | Modelo usado para reescrever as notícias |
@@ -174,8 +175,8 @@ Códigos dos cargos: `1` Presidente, `3` Governador, `5` Senador, `6` Dep. feder
 npm run dev:api     # backend com recarga automática (porta 3000)
 npm run dev:web     # frontend Vite com proxy para a API
 npm run typecheck   # tipos do backend e do frontend
-npm run simular     # cria data/simulado.db com uma apuração fictícia para testar
 ```
+
 
 ```
 server/    backend em TypeScript, executado direto pelo Node 24 (sem etapa de build)

@@ -2,19 +2,22 @@ import { useMemo } from 'react';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { PontoHistorico } from '../../../shared/tipos.ts';
 import { diaMes, horaMinuto, pct } from '../formato.ts';
-import { corFixa, corSerie, neutros, type Tema } from '../paleta.ts';
+import { corSerie, neutros, type Tema } from '../paleta.ts';
 
 export type Granularidade = 'hora' | 'todos';
 
 // Cor do "pontinho" (legenda/tabela/dica): a fixa (Lula/Flávio) vence a série automática
-const swatchStyle = (nome: string) => (corFixa(nome) ? { background: corFixa(nome) } : undefined);
+const swatchStyle = (s: Serie) => (s.cor ? { background: s.cor } : undefined);
 
-interface Serie { numero: string; nome: string; slot: number | undefined }
+// cor: a do candidato (partido, via corDe); sem ela, a da série automática pelo slot
+interface Serie { numero: string; nome: string; slot: number | undefined; cor?: string }
 
 interface Props {
   historico: PontoHistorico[];
   /** numero -> posição na paleta; quem não está aqui vira linha de contexto (cinza) */
   slots: Map<string, number>;
+  /** Cor do candidato (cor do partido, sem colisão na disputa: cores.ts); tem prioridade sobre a série */
+  corDe?: (numero: string) => string | undefined;
   por: Granularidade;
   onPor: (p: Granularidade) => void;
   ativo: string | null;
@@ -55,7 +58,7 @@ function Dica({ active, payload, series, ativo }: {
       <ul>
         {visiveis.map((s) => (
           <li key={s.numero} className={s.numero === ativo ? 'dica-ativa' : ''}>
-            <span className="ponto" data-slot={s.slot ?? 'contexto'} style={swatchStyle(s.nome)} />
+            <span className="ponto" data-slot={s.slot ?? 'contexto'} style={swatchStyle(s)} />
             <span>{s.nome}</span>
             <strong>{pct(linha[s.numero] as number)}</strong>
           </li>
@@ -66,7 +69,7 @@ function Dica({ active, payload, series, ativo }: {
   );
 }
 
-export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFixar, tema, referencia50, compacto }: Props) {
+export function Evolucao({ historico, slots, corDe, por, onPor, ativo, onDestacar, onFixar, tema, referencia50, compacto }: Props) {
   const { linhas, series } = useMemo(() => {
     const variosDias = new Set(historico.map((p) => diaMes(p.instante))).size > 1;
     const linhas: Linha[] = historico.map((p) => {
@@ -75,9 +78,9 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
       return l;
     });
     const nomes = new Map(historico.flatMap((p) => p.cand.map((c) => [c.numero, c.nome] as const)));
-    const series: Serie[] = [...nomes].map(([numero, nome]) => ({ numero, nome, slot: slots.get(numero) }));
+    const series: Serie[] = [...nomes].map(([numero, nome]) => ({ numero, nome, slot: slots.get(numero), cor: corDe?.(numero) }));
     return { linhas, series };
-  }, [historico, por, slots]);
+  }, [historico, por, slots, corDe]);
 
   const n = neutros(tema);
   // Ordem de desenho: contexto embaixo, coloridas por cima, destacada no topo
@@ -122,7 +125,7 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
                 {ordemDesenho.map((s) => {
                   const destaque = ativo === s.numero;
                   const apagada = ativo !== null && !destaque;
-                  const cor = corFixa(s.nome) ?? corSerie(tema, s.slot);
+                  const cor = s.cor ?? corSerie(tema, s.slot);
                   return (
                     <Line
                       key={s.numero}
@@ -156,7 +159,7 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
                   onMouseLeave={() => onDestacar(null)}
                   onClick={() => onFixar(s.numero)}
                 >
-                  <span className="ponto" data-slot={s.slot} style={swatchStyle(s.nome)} />
+                  <span className="ponto" data-slot={s.slot} style={swatchStyle(s)} />
                   {s.nome}
                   {ultima && typeof ultima[s.numero] === 'number' && <span className="legenda-valor">{pct(ultima[s.numero] as number)}</span>}
                 </button>
@@ -179,7 +182,7 @@ export function Evolucao({ historico, slots, por, onPor, ativo, onDestacar, onFi
                   <tr>
                     <th scope="col">Hora</th>
                     <th scope="col">Seções</th>
-                    {coloridas.map((s) => <th key={s.numero} scope="col"><span className="ponto" data-slot={s.slot} style={swatchStyle(s.nome)} />{s.nome}</th>)}
+                    {coloridas.map((s) => <th key={s.numero} scope="col"><span className="ponto" data-slot={s.slot} style={swatchStyle(s)} />{s.nome}</th>)}
                   </tr>
                 </thead>
                 <tbody>

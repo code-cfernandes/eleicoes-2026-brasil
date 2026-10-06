@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ConfigPublica, PontoHistorico, Resultado } from '../../shared/tipos.ts';
-import { ajustarCandidatos, buscarConfig, buscarHistorico, buscarResultado, mesclarHistorico } from './api.ts';
+import { ajustarCandidatos, buscarConfig, buscarHistorico, buscarResultado, comTurno, definirTurno, mesclarHistorico } from './api.ts';
 import { Avisos } from './componentes/Avisos.tsx';
 import { Cartao } from './componentes/Cartao.tsx';
+import { Cronometro, useAntesDoInicio } from './componentes/Cronometro.tsx';
+import { DisputasDoTurno } from './componentes/DisputasDoTurno.tsx';
 import { Evolucao, type Granularidade } from './componentes/Evolucao.tsx';
 import { Bandeira } from './componentes/Bandeira.tsx';
 import { Inicio } from './componentes/Inicio.tsx';
@@ -14,7 +16,8 @@ import { PorEstado } from './componentes/PorEstado.tsx';
 import { ResumoLideranca } from './componentes/ResumoLideranca.tsx';
 import { VisaoEstado } from './componentes/VisaoEstado.tsx';
 import { dataHora, horaDoAparelho, pct, semAcento, votos } from './formato.ts';
-import { corSerie, MAX_SERIES, useTema } from './paleta.ts';
+import { corDoFinalista, corSerie, MAX_SERIES, useTema } from './paleta.ts';
+import { coresDaDisputa } from './cores.ts';
 import { NOMES_UF } from '../../shared/ufs.ts';
 
 const POR_PAGINA = 24;
@@ -56,12 +59,18 @@ function secaoDoCargo(cargo: number): Secao {
   }
 }
 
+// ?turno=N escolhe o turno; sem ele, vale o turno atual do servidor
+function lerTurnoUrl(): number | null {
+  return Number(new URLSearchParams(location.search).get('turno')) || null;
+}
+
 function lerUrl() {
   const q = new URLSearchParams(location.search);
   const uf = q.get('uf')?.toLowerCase() || 'br';
   const aba = q.get('aba');
-  // URL "/" sem parâmetros (e sem ?cargo nem ?aba): Início
-  if (!location.search) return { cargo: INICIO, uf: 'br' };
+  // URL "/" sem parâmetros (só ?turno, no máximo): Início
+  q.delete('turno');
+  if (!q.size) return { cargo: INICIO, uf: 'br' };
   if (aba === 'estados') return { cargo: POR_ESTADO, uf };
   if (aba === 'estado') return { cargo: VISAO_ESTADO, uf };
   if (aba === 'mapa') return { cargo: MAPA, uf: 'br' };
@@ -73,7 +82,8 @@ function lerUrl() {
 
 export function App() {
   const [tema, alternarTema] = useTema();
-  const [cfg, setCfg] = useState<ConfigPublica>();
+  const [cfgServidor, setCfg] = useState<ConfigPublica>();
+  const [turnoPedido, setTurnoPedido] = useState(lerTurnoUrl);
   const [{ cargo, uf }, setDisputa] = useState(lerUrl);
   const [ufEstadual, setUfEstadual] = useState(uf === 'br' ? 'sp' : uf);
   const [por, setPor] = useState<Granularidade>('hora');
@@ -87,25 +97,59 @@ export function App() {
   const [destacado, setDestacado] = useState<string | null>(null);
   const [fixado, setFixado] = useState<string | null>(null);
   const [subAba, setSubAba] = useState<'resultados' | 'evolucao' | 'por-estado'>('resultados');
-  const [encerrado, setEncerrado] = useState(false);
+  const [finalizadoAoVivo, setFinalizadoAoVivo] = useState(false); // aviso SSE de que o turno atual encerrou
   // Rola a aba ativa do seletor de cargo (dentro de "Candidatos") para o centro visível
   const abaAtivaRef = useRolarAbaAtiva(cargo);
 
+  // Sem a config não há seletor de turno nem cargos: se falhar (servidor reiniciando, rede),
+  // tenta de novo a cada 10s em vez de deixar a tela pela metade até recarregar
   useEffect(() => {
-    buscarConfig().then((c) => { setCfg(c); setEncerrado(c.finalizado); }).catch((e: Error) => setErro(e.message));
+    let timer: ReturnType<typeof setTimeout>;
+    let vivo = true;
+    const carregar = () => buscarConfig()
+      .then((c) => { if (vivo) { setCfg(c); setErro(undefined); } })
+      .catch((e: Error) => { if (vivo) { setErro(e.message); timer = setTimeout(carregar, 10_000); } });
+    void carregar();
+    return () => { vivo = false; clearTimeout(timer); };
   }, []);
+
+  // Turno em exibição: o pedido na URL, se o servidor o tiver; senão, o atual.
+  // Antes da config chegar, vale o pedido (ou nenhum: o servidor responde com o atual).
+  const turnosServidor = cfgServidor?.turnos ?? [];
+  const turno = cfgServidor
+    ? (turnosServidor.some((t) => t.numero === turnoPedido) ? turnoPedido! : cfgServidor.turnoAtual)
+    : turnoPedido ?? undefined;
+  const ehTurnoAtual = !cfgServidor || turno === cfgServidor.turnoAtual;
+  definirTurno(turno); // antes dos efeitos dos filhos: toda busca já sai com ?turno=
+
+  // A config "vista" pelo resto da tela é a do turno escolhido (cargos, início, encerrado)
+  const infoTurno = turnosServidor.find((t) => t.numero === turno);
+  const cfg = useMemo((): ConfigPublica | undefined => cfgServidor && infoTurno && {
+    ...cfgServidor,
+    cargos: infoTurno.cargos,
+    turno: infoTurno.nome,
+    inicioApuracao: infoTurno.inicioApuracao,
+    finalizado: infoTurno.finalizado,
+  }, [cfgServidor, infoTurno]);
+  const encerrado = !!cfg?.finalizado || (ehTurnoAtual && finalizadoAoVivo);
+  // Turno que ainda não começou (ex.: 2º turno antes de 25/10, 17h): as telas de dados dão lugar
+  // ao cronômetro, e nada é buscado da disputa até lá. Vira false sozinho no horário.
+  const aguardando = useAntesDoInicio(cfg?.inicioApuracao);
 
   const cargoAtual = cfg?.cargos.find((c) => c.codigo === cargo);
 
-  // Garante uma UF válida para o cargo (ex.: Governador não tem "Brasil"; Distrital só DF)
+  // Garante cargo e UF válidos no turno (ex.: Governador não tem "Brasil"; Distrital só DF;
+  // no 2º turno não há Senador e Governador só existe em algumas UFs)
   useEffect(() => {
-    if (!cargoAtual || cargoAtual.ufs.includes(uf)) return;
-    const nova = cargoAtual.ufs.includes(ufEstadual) ? ufEstadual : cargoAtual.ufs[0]!;
-    setDisputa({ cargo, uf: nova });
-  }, [cargoAtual, cargo, uf, ufEstadual]);
+    if (!cfg || cargo <= 0) return;
+    const c = cargoAtual ?? cfg.cargos[0];
+    if (!c || (c === cargoAtual && c.ufs.includes(uf))) return;
+    const nova = c.ufs.includes(uf) ? uf : c.ufs.includes(ufEstadual) ? ufEstadual : c.ufs[0]!;
+    setDisputa({ cargo: c.codigo, uf: nova });
+  }, [cfg, cargoAtual, cargo, uf, ufEstadual]);
 
   useEffect(() => {
-    const url = cargo === INICIO ? '/'
+    const base = cargo === INICIO ? ''
       : cargo === POR_ESTADO ? '?aba=estados'
       : cargo === VISAO_ESTADO ? `?aba=estado&uf=${uf}`
       : cargo === MAPA ? '?aba=mapa'
@@ -113,17 +157,19 @@ export function App() {
       : cargo === MAIS ? '?aba=mais'
       : cargo === SOBRE ? '?aba=sobre'
       : `?cargo=${cargo}&uf=${uf}`;
-    history.replaceState(null, '', url);
+    // O turno só vai para a URL quando não é o atual (o link sem ?turno segue sempre o mais recente)
+    const comTurnoNaUrl = turnoPedido && !ehTurnoAtual ? `${base ? `${base}&` : '?'}turno=${turnoPedido}` : base;
+    history.replaceState(null, '', comTurnoNaUrl || '/');
     if (uf !== 'br') setUfEstadual(uf);
     setBusca(''); setLimite(POR_PAGINA); setFixado(null); setDestacado(null);
     setResultado(undefined); setHistorico([]); setSubAba('resultados');
-  }, [cargo, uf]);
+  }, [cargo, uf, turno, turnoPedido, ehTurnoAtual]);
 
   // Atualização: o servidor avisa por SSE quando o TSE publica versão nova; aí a tela
   // busca pelas rotas HTTP (304 se nada mudou, histórico só a partir do último ponto).
   // Sem SSE (rede bloqueia, servidor lotado), cai para polling no ritmo do backend.
   useEffect(() => {
-    if (!cfg || !cargoAtual?.ufs.includes(uf)) return;
+    if (!cfg || aguardando || !cargoAtual?.ufs.includes(uf)) return;
     const ctrl = new AbortController();
     const timers = new Set<ReturnType<typeof setTimeout>>();
     const depois = (fn: () => void, ms: number) => {
@@ -171,13 +217,14 @@ export function App() {
       }
       if (ctrl.signal.aborted) return;
       if (deNovo) { deNovo = false; void carregar(); return; }
+      if (cfg.finalizado && versao !== undefined) return; // turno encerrado: os números não mudam mais
       seguranca = setTimeout(carregar, vivo ? SEGURANCA_MS : cfg.intervaloMs);
     };
 
     let fonte: EventSource | undefined;
     let jaAbriu = false;
     const conectar = () => {
-      fonte = new EventSource(`/api/eventos?uf=${uf}&cargo=${cargo}`);
+      fonte = new EventSource(comTurno(`/api/eventos?uf=${uf}&cargo=${cargo}`));
       fonte.onopen = () => {
         vivo = true; setAoVivo(true);
         if (jaAbriu) void carregar(); // reconectou: confere o que pode ter perdido
@@ -187,7 +234,7 @@ export function App() {
         const { instante, espalharMs } = JSON.parse((ev as MessageEvent<string>).data) as { instante: number | null; espalharMs?: number };
         if (instante !== versao) depois(() => void carregar(), Math.random() * (espalharMs ?? ESPALHAR_MS));
       });
-      fonte.addEventListener('finalizado', () => setEncerrado(true));
+      fonte.addEventListener('finalizado', () => setFinalizadoAoVivo(true));
       fonte.onerror = () => {
         vivo = false; setAoVivo(false);
         // CONNECTING: o navegador já está reconectando. CLOSED: recusado (ex.: 503), tenta em 1 min
@@ -200,7 +247,7 @@ export function App() {
     const aoVoltar = () => { if (!document.hidden) void carregar(); };
     document.addEventListener('visibilitychange', aoVoltar);
     void carregar();
-    conectar();
+    if (!cfg.finalizado) conectar();
     return () => {
       ctrl.abort();
       fonte?.close();
@@ -209,7 +256,7 @@ export function App() {
       setAoVivo(false);
       document.removeEventListener('visibilitychange', aoVoltar);
     };
-  }, [cfg, cargoAtual, uf, cargo, por]);
+  }, [cfg, aguardando, cargoAtual, uf, cargo, por]);
 
   // Cores: os 8 mais votados agora, distribuídos pela ordem do número (não do placar),
   // então uma virada não troca as cores de quem já estava na tela.
@@ -220,6 +267,17 @@ export function App() {
       .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }))
       .map((n, i) => [n, i] as const));
   }, [resultado, historico]);
+
+  // Cor de cada candidato colorido (os do `slots`): finalista do 2º turno (validado par a par) >
+  // cor do partido sem colisão na disputa (cores.ts). Fora do top, a cor de contexto (cinza).
+  // Prioridade pelos votos (a ordem do resultado); quem só está no histórico vem por último
+  const coresDosCandidatos = useMemo(() => {
+    const doResultado = (resultado?.candidatos ?? []).filter((c) => slots.has(c.numero));
+    const resto = [...slots.keys()].filter((n) => !doResultado.some((c) => c.numero === n)).map((numero) => ({ numero }));
+    return coresDaDisputa(tema, [...doResultado, ...resto]);
+  }, [tema, slots, resultado]);
+  const corDe = useCallback((numero: string) => corDoFinalista(turno, cargo, uf, numero) ?? coresDosCandidatos.get(numero),
+    [turno, cargo, uf, coresDosCandidatos]);
 
   const noGrafico = useMemo(() => new Set(historico.flatMap((p) => p.cand.map((c) => c.numero))), [historico]);
   const ativo = fixado ?? destacado;
@@ -257,7 +315,9 @@ export function App() {
   };
   const abrirEstado = (u: string) => { setDisputa({ cargo: VISAO_ESTADO, uf: u }); scrollTo({ top: 0 }); };
 
-  const ehDisputa = cargo > 0;
+  // Na espera, o topo não mostra "ao vivo"/atualização de uma disputa que ainda não começou
+  const ehDisputa = cargo > 0 && !aguardando;
+  const telaDeEspera = aguardando && !!cfg?.inicioApuracao && secao !== 'mais' && secao !== 'sobre';
 
   return (
     <div className="layout">
@@ -266,6 +326,8 @@ export function App() {
       <main className="conteudo">
         <header className="topo">
           <div className="topo-titulo">
+            {/* Título e seletor de turno na mesma linha (quebra para baixo em telas estreitas) */}
+            <div className="topo-titulo-linha">
             <h1>
               {/* Volta à página Início. Link real: Ctrl/⌘+clique abre em nova aba */}
               <a href="/" className="topo-inicio" onClick={(e) => {
@@ -276,7 +338,25 @@ export function App() {
                 Eleições <span className="topo-ano">2026</span>
               </a>
             </h1>
-            <p className="topo-subtitulo">{encerrado ? 'Totalização encerrada' : 'Totalização ao vivo'} · {cfg?.turno}</p>
+            {turnosServidor.length > 1 && (
+              <div className="alternar topo-turno" role="group" aria-label="Turno">
+                {turnosServidor.map((t) => (
+                  <button key={t.numero} type="button" aria-pressed={t.numero === turno}
+                    onClick={() => setTurnoPedido(t.numero)}>
+                    {t.nome}
+                  </button>
+                ))}
+              </div>
+            )}
+            </div>
+            <p className="topo-subtitulo">
+              {encerrado
+                ? 'Totalização encerrada'
+                : aguardando && cfg?.inicioApuracao
+                  ? `Totalização começa ${dataHora(cfg.inicioApuracao)}`
+                  : 'Totalização ao vivo'}
+              {turnosServidor.length <= 1 && cfg?.turno ? ` · ${cfg.turno}` : ''}
+            </p>
           </div>
 
           <div className="topo-status">
@@ -309,7 +389,7 @@ export function App() {
           )}
         </header>
 
-        {secao === 'candidatos' && (
+        {secao === 'candidatos' && !telaDeEspera && (
           <nav className="filtros" aria-label="Disputa">
             <div className="cargos" role="tablist" aria-label="Cargo">
               {cfg?.cargos.map((c) => (
@@ -329,7 +409,15 @@ export function App() {
           </nav>
         )}
 
-        {secao === 'inicio' ? (
+        {/* Trocar de turno remonta tudo abaixo: cada bloco volta a buscar já no turno novo.
+            Sem ?turno na URL a chave é fixa, então a chegada da config não remonta nada. */}
+        <Fragment key={turnoPedido === null ? 'atual' : String(turno)}>
+        {telaDeEspera ? (<>
+          <Cronometro inicio={cfg!.inicioApuracao!} turno={cfg!.turno}
+            chavePush={ehTurnoAtual ? cfg!.chavePush : undefined} />
+          {/* 2º turno em diante: o que se vota em cada estado (no 1º turno seria todo cargo em toda UF) */}
+          {(turno ?? 1) > 1 && <DisputasDoTurno turno={cfg!.turno} />}
+        </>) : secao === 'inicio' ? (
           <Inicio cfg={cfg} tema={tema}
             onAbrirDisputa={(c, u) => { setDisputa({ cargo: c, uf: u }); scrollTo({ top: 0 }); }}
             onAbrirEstado={abrirEstado}
@@ -347,9 +435,10 @@ export function App() {
             onVoltar={() => ir('por-estado')}
             onAbrirDisputa={(c, u) => { setDisputa({ cargo: c, uf: u }); scrollTo({ top: 0 }); }} />
         ) : secao === 'mapa' ? (
-          <Mapa intervaloMs={cfg?.intervaloMs ?? 30_000} onAbrirEstado={abrirEstado} />
+          <Mapa intervaloMs={cfg?.intervaloMs ?? 30_000} onAbrirEstado={abrirEstado} cargos={cfg?.cargos.map((c) => c.codigo)} />
         ) : secao === 'novidades' ? (
-          <Novidades intervaloMs={cfg?.intervaloMs ?? 30_000} chave={cfg?.chavePush ?? ''} />
+          // Inscrição em novidades vale para o turno atual: no turno anterior, sem o sino
+          <Novidades intervaloMs={cfg?.intervaloMs ?? 30_000} chave={ehTurnoAtual ? (cfg?.chavePush ?? '') : undefined} />
         ) : secao === 'mais' ? (
           <Mais tema={tema} onAlternarTema={alternarTema} />
         ) : secao === 'sobre' ? (
@@ -389,7 +478,7 @@ export function App() {
 
           {resultado?.totais && resultado.totais.votosTotais > 0 && <BrancosNulos totais={resultado.totais} />}
 
-          {cfg && cargoAtual?.ufs.includes(uf) && (
+          {cfg && ehTurnoAtual && cargoAtual?.ufs.includes(uf) && (
             <Avisos uf={uf} cargo={cargo} chave={cfg.chavePush} proporcional={cargoAtual.proporcional} />
           )}
         </section>
@@ -422,7 +511,7 @@ export function App() {
           <ol className="cartoes" aria-label="Candidatos, do mais votado ao menos votado">
             {visiveis.map((c, i) => (
               <Cartao key={c.numero} c={c}
-                cor={corSerie(tema, slots.get(c.numero))}
+                cor={slots.has(c.numero) ? (corDe(c.numero) ?? corSerie(tema, slots.get(c.numero))) : corSerie(tema, undefined)}
                 noGrafico={noGrafico.has(c.numero)}
                 ativo={ativo === c.numero}
                 esmaecido={ativo !== null && ativo !== c.numero}
@@ -443,6 +532,7 @@ export function App() {
 
         {subAba === 'evolucao' && (
           <Evolucao historico={historico} slots={slots} por={por} onPor={setPor}
+            corDe={corDe}
             ativo={ativo} onDestacar={setDestacado} onFixar={fixar} tema={tema}
             referencia50={!proporcional && vagas === 1} />
         )}
@@ -452,6 +542,7 @@ export function App() {
         )}
 
         </>)}
+        </Fragment>
 
         <footer className="rodape">
           <p>
