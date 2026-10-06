@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { turnoDaTela } from '../api.ts';
 import { api, ehIOS, inscricaoDoAparelho, instalado, suportaPush } from '../push.ts';
-import { TesteNotificacao } from './TesteNotificacao.tsx';
 
 // Botão "Avisar sobre esta disputa": inscreve o aparelho em notificações push da disputa aberta.
 
@@ -98,7 +97,6 @@ export function Avisos({ uf, cargo, chave, proporcional }: { uf: string; cargo: 
             ? `Você será avisado ${quando}. Toque para desativar.`
             : `Receba um aviso ${quando}.`}
       </p>
-      {ativo && <TesteNotificacao />}
     </div>
   );
 }

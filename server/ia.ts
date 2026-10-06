@@ -1,11 +1,11 @@
-import { config, env, envNumero } from './config.ts';
+import { env, envNumero } from './config.ts';
 
 // Cliente do DeepSeek: redige frases curtas e neutras para a linha do tempo de Presidente/Brasil.
 // A IA só reescreve os fatos já detectados pelo código (que continuam sendo a fonte da verdade);
 // ela não inventa números nem nomes. Sem DEEPSEEK_API_KEY, fica desligado e a linha do tempo
 // segue com as frases-modelo.
 
-const chave = config.simulacao ? undefined : env('DEEPSEEK_API_KEY'); // simulação não gasta API
+const chave = env('DEEPSEEK_API_KEY');
 const modelo = env('DEEPSEEK_MODEL') ?? 'deepseek-chat';
 const base = (env('DEEPSEEK_BASE_URL') ?? 'https://api.deepseek.com').replace(/\/+$/, '');
 const TEMPO_MAX_MS = 15_000;

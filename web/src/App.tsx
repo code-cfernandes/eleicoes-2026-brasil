@@ -324,11 +324,6 @@ export function App() {
       <SidebarDesktop secao={secao} onIr={ir} tema={tema} onAlternarTema={alternarTema} />
 
       <main className="conteudo">
-        {cfgServidor?.simulacao && (
-          <p className="faixa-simulacao" role="note">
-            <strong>Simulação</strong> · dados fictícios gerados para ensaiar o 2º turno. Não são resultados do TSE.
-          </p>
-        )}
         <header className="topo">
           <div className="topo-titulo">
             {/* Título e seletor de turno na mesma linha (quebra para baixo em telas estreitas) */}

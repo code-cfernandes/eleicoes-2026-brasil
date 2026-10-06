@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { api, ehIOS, inscricaoDoAparelho, instalado, suportaPush } from '../push.ts';
-import { TesteNotificacao } from './TesteNotificacao.tsx';
 
 // Botão "Receber novidades por notificação": inscreve o aparelho no canal global de novidades
 // (as mesmas para todos os usuários), diferente dos avisos por disputa (Avisos.tsx).
@@ -88,7 +87,6 @@ export function AvisosNovidades({ chave }: { chave: string }) {
             ? 'Você será avisado a cada novidade da totalização. Toque para desativar.'
             : 'Receba as novidades em tempo real no celular, mesmo com a tela fechada.'}
       </p>
-      {ativo && <TesteNotificacao />}
     </div>
   );
 }

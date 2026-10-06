@@ -15,10 +15,8 @@ import type { Candidato, EventoApuracao, Resultado } from '../shared/tipos.ts';
 // disputa substitui o anterior (topic/tag), então não chega pilha de avisos velhos.
 const TTL_DISPUTA_S = 60 * 60;
 const TTL_NOVIDADES_S = 30 * 60;          // novidades são frequentes: urgência normal, validade curta
-const TTL_TESTE_S = 5 * 60;
 const INTERVALO_VIRADA_MS = 15 * 60_000;  // no máximo um aviso de virada a cada 15 min por disputa
 const PST_MIN_VIRADA = 5;                 // antes disso a liderança oscila demais
-const INTERVALO_TESTE_MS = 20_000;        // botão "testar notificação": no máximo 1 a cada 20s por aparelho
 // Marcos de % de seções totalizadas (0 = "começou"). No 2º turno, com só dois candidatos, a
 // apuração é rápida e a reta final pesa mais: marcos mais finos (10% e 95%).
 const MARCOS_POR_TURNO: Record<number, number[]> = {
@@ -242,8 +240,6 @@ export type Deteccao =
   | { tipo: 'virada'; entrou: Candidato }
   | { tipo: 'definido'; eleitos: Candidato[]; segundoTurno: Candidato[] };
 
-// Simulação: todo push sai marcado, para ninguém confundir com resultado real
-const PREFIXO = config.simulacao ? '[Simulação] ' : '';
 const pctBR = (v: number) => `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
 // "ANDRE DO PRADO" -> "Andre do Prado": iniciais maiúsculas, partículas (da, de, do, dos, das, e) minúsculas
 export const nomeProprio = (s: string) => s.toLowerCase()
@@ -310,7 +306,7 @@ export function avaliar(d: Resultado): { aviso: Aviso | null; deteccoes: Detecca
   const placar = cand.slice(0, 3).filter((c) => c.votos > 0)
     .map((c) => `${nomeProprio(c.nome)} ${pctBR(c.percentual)}`).join(', ');
   const aviso: Aviso = {
-    titulo: `${PREFIXO}${cfg.nome}, ${NOMES_UF[uf] ?? uf.toUpperCase()}${turno > 1 ? ` (${turno}º turno)` : ''}`,
+    titulo: `${cfg.nome}, ${NOMES_UF[uf] ?? uf.toUpperCase()}${turno > 1 ? ` (${turno}º turno)` : ''}`,
     corpo: [...linhas, placar && `${placar} (${pctBR(d.secoesTotalizadas)} totalizado)`].filter(Boolean).join('\n'),
     url: `/?cargo=${cargo}&uf=${uf}&turno=${turno}`,
     tag: `apuracao-${uf}-${cargo}`, // no aparelho, o aviso novo da disputa substitui o anterior
@@ -390,48 +386,12 @@ export function enviar(uf: string, cargo: number, aviso: Aviso) {
 export function enviarNovidades(ev: EventoApuracao) {
   const inscritos = sql.inscritosNovidades.all() as { endpoint: string; p256dh: string; auth: string }[];
   if (!inscritos.length) return 0;
-  const payload = JSON.stringify({ titulo: `${PREFIXO}Novidades`, corpo: ev.texto, url: `/?aba=novidades&turno=${ev.turno}`, tag: 'novidades' });
+  const payload = JSON.stringify({ titulo: 'Novidades', corpo: ev.texto, url: `/?aba=novidades&turno=${ev.turno}`, tag: 'novidades' });
   for (const i of inscritos) {
     fila.push({ inscricao: { endpoint: i.endpoint, keys: { p256dh: i.p256dh, auth: i.auth } }, payload, topico: 'novidades', urgente: false, ttl: TTL_NOVIDADES_S });
   }
   bombear();
   return inscritos.length;
-}
-
-// Botão "testar notificação": envia na hora (fora da fila) só para este aparelho e devolve o que o
-// push service respondeu, para a tela dizer se o problema é no envio ou no aparelho.
-// Só aparelhos já inscritos: o servidor nunca dispara para uma URL qualquer.
-const ultimosTestes = new Map<string, number>();
-export type ResultadoTeste =
-  | { ok: true; servico: Servico }
-  | { ok: false; servico: Servico; status: number | null; motivo: string }
-  | 'desconhecido' | 'aguarde';
-
-export async function enviarTeste(endpoint: string): Promise<ResultadoTeste> {
-  const i = sql.porEndpoint.get(endpoint) as { endpoint: string; p256dh: string; auth: string } | undefined;
-  if (!i) return 'desconhecido';
-  const agora = Date.now();
-  if (agora - (ultimosTestes.get(endpoint) ?? 0) < INTERVALO_TESTE_MS) return 'aguarde';
-  if (ultimosTestes.size > 10_000) ultimosTestes.clear();
-  ultimosTestes.set(endpoint, agora);
-  const payload = JSON.stringify({
-    titulo: `${PREFIXO}Teste de notificação`,
-    corpo: 'Tudo certo: este aparelho recebe os avisos da apuração.',
-    url: '/',
-    tag: 'teste',
-  });
-  try {
-    await webpush.sendNotification({ endpoint: i.endpoint, keys: { p256dh: i.p256dh, auth: i.auth } }, payload,
-      { TTL: TTL_TESTE_S, urgency: 'high', timeout: 10_000 });
-    contar(endpoint, 'enviados');
-    return { ok: true, servico: servico(endpoint) };
-  } catch (e) {
-    const err = e as ErroPush;
-    const expirada = err.statusCode === 404 || err.statusCode === 410;
-    contar(endpoint, expirada ? 'expirados' : 'falhas', err);
-    if (expirada) sql.apagar.run(endpoint);
-    return { ok: false, servico: servico(endpoint), status: err.statusCode ?? null, motivo: String(err.body || err.message || '').trim().slice(0, 160) };
-  }
 }
 
 export const estatisticasPush = () => ({

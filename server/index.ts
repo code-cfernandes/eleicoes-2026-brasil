@@ -7,14 +7,13 @@ import { config, CARGOS, defTurno } from './config.ts';
 import { buscarResultado, ErroTSE, saudeTSE } from './tse.ts';
 import { cargosDoTurno, descobrirTurnos, disputaExiste } from './turnos.ts';
 import { codigosPendentes, descobrirCodigos } from './codigos.ts';
-import { iniciarTseSimulado } from './simulacao.ts';
 import { registrar, lerHistorico } from './historico.ts';
 import { fechar } from './banco.ts';
 import { obterFoto } from './fotos.ts';
 import { assinar, CANAL_NOVIDADES, conexoesAbertas, disputasAssistidas, encerrarTodas, notificar } from './eventos.ts';
 import { backfillIA, estaTudoConcluido, gerarResumoPeriodico, idMaisRecente, lerNovidades, lerNovidadesAntes, marcarTudoConcluido, processar, pulsar, reconstruirHistorico, redigirComIA } from './novidades.ts';
 import {
-  avaliar, chavePublica, deixarDeSeguir, deixarNovidades, disputasComInscritos, disputasSeguidas, enviar, enviarTeste,
+  avaliar, chavePublica, deixarDeSeguir, deixarNovidades, disputasComInscritos, disputasSeguidas, enviar,
   estatisticasPush, inscricaoValida, renovar, seguir, segueNovidades, seguirNovidades,
 } from './notificacoes.ts';
 import type { ConfigPublica, DisputaDoTurno, EstadoPanorama, Panorama, RespostaDisputas, Resultado, ResumoCargo, SaudeDados, TurnoPublico, VisaoEstado } from '../shared/tipos.ts';
@@ -361,7 +360,6 @@ app.get('/api/config', (_req, res) => {
     chavePush: chavePublica,
     turnos,
     turnoAtual: config.turnoAtual,
-    simulacao: !!config.simulacao,
     inicioApuracao: atual?.inicioApuracao ?? null,
     turno: atual?.nome ?? '',
     finalizado: atual?.finalizado ?? false,
@@ -452,24 +450,6 @@ app.post('/api/notificacoes/consultar', corpoJson, (req: Request, res: Response)
   res.json({ disputas: endpoint ? disputasSeguidas(endpoint) : [], novidades: endpoint ? segueNovidades(endpoint) : false });
 });
 
-// Notificação de teste só para o aparelho que pediu (POST para o endpoint não ir para logs de URL).
-// 200 com { ok, servico, status?, motivo? }: o que o push service respondeu.
-// Só no modo simulação: em produção o botão não aparece e a rota não existe.
-app.post('/api/notificacoes/teste', corpoJson, async (req: Request, res: Response) => {
-  if (!config.simulacao) {
-    res.status(404).json({ erro: 'Disponível só no modo simulação' });
-    return;
-  }
-  if (typeof req.body?.endpoint !== 'string') {
-    res.status(400).json({ erro: 'endpoint ausente' });
-    return;
-  }
-  const r = await enviarTeste(req.body.endpoint);
-  if (r === 'desconhecido') res.status(404).json({ erro: 'Este aparelho não está inscrito' });
-  else if (r === 'aguarde') res.status(429).json({ erro: 'Aguarde alguns segundos para testar de novo' });
-  else res.json(r);
-});
-
 app.get('/api/saude', (_req, res) => {
   const dados: SaudeDados = { tse: saudeTSE(), coletaIntervaloMs: config.cacheMs, conexoesAoVivo: conexoesAbertas() };
   res.json({ ok: true, conexoes: conexoesAbertas(), push: estatisticasPush(), dados });
@@ -526,8 +506,6 @@ async function coletarTudo() {
   }
 }
 
-// Simulação: o TSE falso precisa estar no ar antes de qualquer consulta (a descoberta abaixo já usa)
-if (config.simulacao) await iniciarTseSimulado();
 // Na subida, antes de tudo: descobre os códigos que o ambiente não define (limite de 10s; se o TSE
 // não responder, segue com o que tem e o coletor tenta de novo a cada rodada)
 await descobrirCodigos();

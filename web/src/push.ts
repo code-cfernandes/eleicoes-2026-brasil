@@ -47,32 +47,3 @@ export async function inscricaoDoAparelho(chave: string, criar = false): Promise
   if (!s && criar) s = await assinar(reg, chave);
   return s;
 }
-
-// Botão "Testar notificação": duas notificações, para separar onde está o problema.
-// 1) "Teste local": exibida pelo próprio navegador, sem servidor nem push service. Se ela não
-//    aparece, o bloqueio é do sistema/navegador (Não perturbar, notificações do navegador desligadas).
-// 2) "Teste de notificação": push de verdade, vindo do servidor (POST /api/notificacoes/teste).
-export async function testarNotificacao(): Promise<string> {
-  const reg = await navigator.serviceWorker.ready;
-  if (Notification.permission !== 'granted') return 'As notificações deste site não estão permitidas no navegador.';
-  await reg.showNotification('Teste local', {
-    body: 'Se você está vendo isto, o navegador consegue exibir notificações.',
-    tag: 'teste-local', icon: '/icones/icone-192.png', lang: 'pt-BR',
-  });
-  const s = await reg.pushManager.getSubscription();
-  if (!s) return 'Este aparelho não está inscrito. Ative os avisos de novo.';
-  const r = await fetch('/api/notificacoes/teste', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: s.endpoint }),
-  });
-  const corpo = await r.json().catch(() => null) as { ok?: boolean; status?: number | null; motivo?: string; erro?: string } | null;
-  if (r.status === 404) return 'Este aparelho não está inscrito no servidor. Desative e ative os avisos de novo.';
-  if (!r.ok) return corpo?.erro ?? `Não foi possível testar (HTTP ${r.status}).`;
-  if (corpo?.ok) {
-    return 'Enviadas duas notificações: "Teste local" (do navegador) e "Teste de notificação" (do servidor). '
-      + 'Nenhuma apareceu: as notificações do navegador estão desligadas no sistema (no Windows: Configurações > '
-      + 'Sistema > Notificações, e o modo Não perturbar). Só a local apareceu: o navegador não está recebendo '
-      + 'o push; desative e ative os avisos de novo.';
-  }
-  return `O serviço de push recusou o envio (${[corpo?.status, corpo?.motivo].filter(Boolean).join(': ') || 'sem detalhe'}). `
-    + 'Desative e ative os avisos de novo; se continuar, avise o responsável pelo site.';
-}
