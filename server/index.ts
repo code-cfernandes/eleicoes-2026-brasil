@@ -16,7 +16,7 @@ import {
   avaliar, chavePublica, deixarDeSeguir, deixarNovidades, disputasComInscritos, disputasSeguidas, enviar, enviarTeste,
   estatisticasPush, inscricaoValida, renovar, seguir, segueNovidades, seguirNovidades,
 } from './notificacoes.ts';
-import type { ConfigPublica, EstadoPanorama, Panorama, Resultado, ResumoCargo, SaudeDados, TurnoPublico, VisaoEstado } from '../shared/tipos.ts';
+import type { ConfigPublica, DisputaDoTurno, EstadoPanorama, Panorama, RespostaDisputas, Resultado, ResumoCargo, SaudeDados, TurnoPublico, VisaoEstado } from '../shared/tipos.ts';
 
 const app = express();
 app.use(compression()); // JSON de deputados cai de ~250 kB para ~35 kB
@@ -277,6 +277,38 @@ app.get('/api/estado', async (req: Request, res: Response) => {
   res.vary('Accept-Encoding').type('json');
   if (req.acceptsEncodings('gzip') === 'gzip') res.set('Content-Encoding', 'gzip').send(pronto.gzip);
   else res.send(pronto.json);
+});
+
+// O que se vota no turno, por disputa, com os candidatos (no 2º turno, os dois finalistas), mesmo
+// antes de haver votos. Para a tela de espera do 2º turno. Só disputas majoritárias e só no nível
+// que decide: Presidente no Brasil ('br'), Governador/Senador por UF. Mesmo cache de obter().
+// Também alimenta o placar dos governadores no Início durante a apuração: sem mudança, 304.
+app.get('/api/disputas', async (req: Request, res: Response) => {
+  const turno = turnoDe(req.query.turno);
+  if (turno === null) {
+    res.status(400).json({ erro: 'turno inválido' });
+    return;
+  }
+  const pares = cargosDoTurno(turno).filter((c) => !c.proporcional)
+    .flatMap((c) => (c.ufs.includes('br') ? ['br'] : c.ufs).map((uf) => ({ cargo: c, uf })));
+  const resultados = await Promise.allSettled(pares.map((p) => obter(p.uf, p.cargo.codigo, turno)));
+  const corpo: RespostaDisputas = {
+    turno,
+    disputas: pares.flatMap(({ cargo, uf }, i): DisputaDoTurno[] => {
+      const r = resultados[i]!;
+      if (r.status !== 'fulfilled') return [];
+      // Vaga única no 2º turno: os dois primeiros bastam (no 1º turno viria a lista toda)
+      const candidatos = turno > 1 ? r.value.candidatos.slice(0, 2) : r.value.candidatos;
+      return [{ cargo: cargo.codigo, nome: cargo.nome, uf, pst: r.value.secoesTotalizadas, instante: r.value.instante, candidatos }];
+    }),
+  };
+  const versao = corpo.disputas.map((d) => `${d.uf}${d.cargo}:${d.instante ?? 0}`).join(',');
+  res.set({ ETag: `"disp-${turno}-${createHash('sha1').update(versao).digest('base64url').slice(0, 16)}"`, 'Cache-Control': 'no-cache' });
+  if (req.fresh) {
+    res.status(304).end();
+    return;
+  }
+  res.json(corpo);
 });
 
 // ?por=hora (padrão): último snapshot de cada hora · ?por=todos: cada geração do TSE

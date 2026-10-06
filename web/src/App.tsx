@@ -4,6 +4,7 @@ import { ajustarCandidatos, buscarConfig, buscarHistorico, buscarResultado, comT
 import { Avisos } from './componentes/Avisos.tsx';
 import { Cartao } from './componentes/Cartao.tsx';
 import { Cronometro, useAntesDoInicio } from './componentes/Cronometro.tsx';
+import { DisputasDoTurno } from './componentes/DisputasDoTurno.tsx';
 import { Evolucao, type Granularidade } from './componentes/Evolucao.tsx';
 import { Bandeira } from './componentes/Bandeira.tsx';
 import { Inicio } from './componentes/Inicio.tsx';
@@ -399,10 +400,12 @@ export function App() {
         {/* Trocar de turno remonta tudo abaixo: cada bloco volta a buscar já no turno novo.
             Sem ?turno na URL a chave é fixa, então a chegada da config não remonta nada. */}
         <Fragment key={turnoPedido === null ? 'atual' : String(turno)}>
-        {telaDeEspera ? (
+        {telaDeEspera ? (<>
           <Cronometro inicio={cfg!.inicioApuracao!} turno={cfg!.turno}
             chavePush={ehTurnoAtual ? cfg!.chavePush : undefined} />
-        ) : secao === 'inicio' ? (
+          {/* 2º turno em diante: o que se vota em cada estado (no 1º turno seria todo cargo em toda UF) */}
+          {(turno ?? 1) > 1 && <DisputasDoTurno turno={cfg!.turno} />}
+        </>) : secao === 'inicio' ? (
           <Inicio cfg={cfg} tema={tema}
             onAbrirDisputa={(c, u) => { setDisputa({ cargo: c, uf: u }); scrollTo({ top: 0 }); }}
             onAbrirEstado={abrirEstado}

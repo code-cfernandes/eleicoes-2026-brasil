@@ -1,4 +1,4 @@
-import type { ConfigPublica, Panorama, PontoHistorico, RespostaHistorico, Resultado, VisaoEstado } from '../../shared/tipos.ts';
+import type { ConfigPublica, Panorama, PontoHistorico, RespostaDisputas, RespostaHistorico, Resultado, VisaoEstado } from '../../shared/tipos.ts';
 
 // Turno em exibição: toda rota de dados recebe ?turno=. O App define o turno antes de renderizar
 // e remonta o conteúdo quando ele muda (key), então cada componente já busca no turno certo.
@@ -37,6 +37,8 @@ export async function buscarConfig(): Promise<ConfigPublica> {
 
 export const buscarPanorama = (signal?: AbortSignal, cargo?: number) =>
   json<Panorama>(`/api/panorama${cargo ? `?cargo=${cargo}` : ''}`, signal);
+
+export const buscarDisputas = (signal?: AbortSignal) => json<RespostaDisputas>('/api/disputas', signal);
 
 export const buscarEstado = (uf: string, signal?: AbortSignal) => json<VisaoEstado>(`/api/estado?uf=${uf}`, signal);
 

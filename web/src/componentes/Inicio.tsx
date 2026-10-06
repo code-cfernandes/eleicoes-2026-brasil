@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Candidato, ConfigPublica, EstadoPanorama, Panorama, PontoHistorico, Resultado, VisaoEstado } from '../../../shared/tipos.ts';
 import { NOMES_UF, REGIOES } from '../../../shared/ufs.ts';
-import { agora as relogio, ajustarCandidatos, buscarEstado, buscarHistorico, buscarPanorama, buscarResultado, comTurno, mesclarHistorico } from '../api.ts';
+import { agora as relogio, ajustarCandidatos, buscarEstado, buscarHistorico, buscarPanorama, buscarResultado, comTurno, mesclarHistorico, turnoDaTela } from '../api.ts';
 import { dataHora, pct, votos } from '../formato.ts';
 import { Avisos } from './Avisos.tsx';
 import { Bandeira } from './Bandeira.tsx';
@@ -11,6 +11,7 @@ import { MapaMini } from './MapaMini.tsx';
 import { Novidades } from './Novidades.tsx';
 import { MAX_SERIES, type Tema } from '../paleta.ts';
 import { ResumoLideranca } from './ResumoLideranca.tsx';
+import { ConfrontoPresidente, Governadores } from './PlacarSegundoTurno.tsx';
 
 // Página inicial: o que a maioria quer saber em poucos segundos, sem precisar escolher
 // cargo e local primeiro. Ordem: contagem regressiva (só antes da totalização) → indicadores
@@ -85,6 +86,9 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
   const [encerrado, setEncerrado] = useState(cfg?.finalizado ?? false);
 
   const intervaloMs = cfg?.intervaloMs ?? 30_000;
+  // 2º turno: o card de Presidente vira confronto e ganha os governadores (o Início remonta ao trocar de turno)
+  const segundoTurno = (turnoDaTela() ?? 1) > 1;
+  const temGovernador = !!cfg?.cargos.some((c) => c.codigo === 3);
   // Turno encerrado (ou anterior): os números não mudam mais; sem conexão ao vivo nem polling
   const finalizado = cfg?.finalizado ?? false;
 
@@ -249,7 +253,9 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
             <ResumoLideranca candidatos={candidatos} vagas={1} proporcional={false} />
           )}
 
-          {top3.length > 0 && (
+          {segundoTurno && <ConfrontoPresidente candidatos={candidatos} />}
+
+          {!segundoTurno && top3.length > 0 && (
             <ol className="inicio-top3" aria-label="Os 3 mais votados">
               {top3.map((c) => (
                 <li key={c.numero} className="inicio-top3-item">
@@ -269,8 +275,12 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
 
           {resultado && (
             <button type="button" className="estado-cargo-todos" onClick={() => onAbrirDisputa(1, 'br')}>
-              Ver todos os {candidatos.length} candidatos
+              {segundoTurno ? 'Ver a disputa completa' : `Ver todos os ${candidatos.length} candidatos`}
             </button>
+          )}
+
+          {segundoTurno && temGovernador && (
+            <Governadores intervaloMs={intervaloMs} onAbrir={(uf) => onAbrirDisputa(3, uf)} />
           )}
         </section>
 

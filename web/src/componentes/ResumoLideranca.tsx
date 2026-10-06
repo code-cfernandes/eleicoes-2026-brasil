@@ -64,7 +64,9 @@ export function ResumoLideranca({ candidatos, vagas, proporcional }: Props) {
               {vice && <>, {pontos(lider.percentual - vice.percentual)} à frente de <strong>{vice.nome}</strong> ({vice.partido}), {votos(lider.votos - vice.votos)} de diferença</>}.
             </>
           )}
-          {indefinido && (lider.percentual > 50
+          {/* Maioria absoluta só decide com mais de dois na disputa: no 2º turno (dois candidatos)
+              quem lidera sempre tem mais da metade, e a frase sobre "1º turno" não cabe */}
+          {indefinido && candidatos.length > 2 && (lider.percentual > 50
             ? ' Com mais da metade dos votos válidos, vence no 1º turno se mantiver a vantagem.'
             : ` Para vencer no 1º turno é preciso mais da metade dos votos válidos: faltam ${pontos(50 - lider.percentual)}.`)}
         </p>

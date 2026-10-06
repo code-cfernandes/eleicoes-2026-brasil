@@ -109,6 +109,24 @@ export interface VisaoEstado {
   cargos: ResumoCargo[];
 }
 
+// O que está em disputa num turno (GET /api/disputas?turno=): cada disputa com seus candidatos,
+// mesmo antes de haver votos. No 2º turno: Presidente (uf 'br') e Governador nas UFs com 2º turno.
+export interface DisputaDoTurno {
+  cargo: number;
+  nome: string;
+  uf: string;
+  /** % de seções totalizadas (0 antes da apuração) */
+  pst: number;
+  instante: number | null;
+  /** Na ordem do TSE (mais votado primeiro); antes da apuração, os finalistas zerados */
+  candidatos: Candidato[];
+}
+
+export interface RespostaDisputas {
+  turno: number;
+  disputas: DisputaDoTurno[];
+}
+
 export interface RespostaHistorico {
   /** Candidatos que o gráfico acompanha (top N do snapshot mais recente) */
   numeros: string[];
