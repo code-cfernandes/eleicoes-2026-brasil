@@ -35,7 +35,8 @@ interface Props {
   estados: EstadoPanorama[];
   rotuloLider: string;
   modo?: ModoMapa;
-  corDoCandidato?: (c: { numero: string; nome: string }) => string | undefined;
+  /** uf: o estado em que o candidato lidera (a cor de um finalista do 2º turno depende da disputa) */
+  corDoCandidato?: (c: { numero: string; nome: string; partido?: string }, uf?: string) => string | undefined;
   selecionado?: string;
   onSelecionar: (uf: string) => void;
   verComoLista?: () => void;
@@ -155,14 +156,17 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
   // ordenado do que mais lidera para o que menos lidera.
   const liderancas = useMemo(() => {
     if (modo !== 'lider') return [];
-    const porNumero = new Map<string, { nome: string; numero: string; estados: number }>();
+    // Por candidato, não por número: em Governador/Senador o número é o do partido, e candidatos
+    // diferentes do mesmo partido (ex.: PL 22 em vários estados) viravam uma entrada só
+    const porCandidato = new Map<string, { chave: string; nome: string; numero: string; partido: string; uf: string; estados: number }>();
     for (const e of estados) {
       if (!e.lider) continue;
-      const atual = porNumero.get(e.lider.numero);
+      const chave = e.lider.sqcand || `${e.lider.numero}:${e.lider.nome}`;
+      const atual = porCandidato.get(chave);
       if (atual) atual.estados += 1;
-      else porNumero.set(e.lider.numero, { nome: e.lider.nome, numero: e.lider.numero, estados: 1 });
+      else porCandidato.set(chave, { chave, nome: e.lider.nome, numero: e.lider.numero, partido: e.lider.partido, uf: e.uf, estados: 1 });
     }
-    return [...porNumero.values()].sort((a, b) => b.estados - a.estados || a.nome.localeCompare(b.nome, 'pt-BR'));
+    return [...porCandidato.values()].sort((a, b) => b.estados - a.estados || a.nome.localeCompare(b.nome, 'pt-BR'));
   }, [estados, modo]);
 
   const ufAtivaParaFoco = focoUf ?? selecionado ?? ORDEM_TECLADO[0] ?? 'sp';
@@ -181,7 +185,7 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
 
   function corLider(e: EstadoPanorama | undefined): string {
     if (!e?.lider || !corDoCandidato) return 'var(--mapa-vazio)';
-    const cor = corDoCandidato(e.lider);
+    const cor = corDoCandidato(e.lider, e.uf);
     return cor || 'var(--mapa-sem-cor)';
   }
 
@@ -558,11 +562,11 @@ export function MapaBrasil({ estados, rotuloLider, modo = 'andamento', corDoCand
           : (
             <>
               {liderancas.map((l) => (
-                <span className="mb-legenda-item" key={l.numero}>
+                <span className="mb-legenda-item" key={l.chave}>
                   <span
                     className="mb-legenda-swatch mb-legenda-swatch-redonda"
                     aria-hidden="true"
-                    style={{ background: corDoCandidato?.({ numero: l.numero, nome: l.nome }) || 'var(--mapa-sem-cor)' }}
+                    style={{ background: corDoCandidato?.({ numero: l.numero, nome: l.nome, partido: l.partido }, l.uf) || 'var(--mapa-sem-cor)' }}
                   />
                   {l.nome} · {l.estados} {l.estados === 1 ? 'estado' : 'estados'}
                 </span>

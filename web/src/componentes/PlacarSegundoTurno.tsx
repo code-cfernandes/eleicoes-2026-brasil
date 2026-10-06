@@ -3,7 +3,7 @@ import type { Candidato, DisputaDoTurno } from '../../../shared/tipos.ts';
 import { NOMES_UF } from '../../../shared/ufs.ts';
 import { buscarDisputas } from '../api.ts';
 import { pct, votos } from '../formato.ts';
-import { corFixa } from '../paleta.ts';
+import { corDoFinalista } from '../paleta.ts';
 import { Bandeira } from './Bandeira.tsx';
 import { Foto } from './Cartao.tsx';
 
@@ -25,10 +25,47 @@ function lerEstadoSalvo(): string | null {
 const porNumero = (cands: Candidato[]) =>
   [...cands].sort((a, b) => a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }));
 
-// Cores: as fixas do projeto (ex.: Lula, Flávio) e, para os demais, séries que não colidam.
-// Nos governadores, sem as fixas: elas casam por trecho do nome ("CADU DE LULA" pegaria o vermelho do Lula).
-function cores(a: Candidato, b: Candidato, usarFixas = true): [string, string] {
-  const fa = usarFixas ? corFixa(a.nome) : undefined, fb = usarFixas ? corFixa(b.nome) : undefined;
+// Lado fixo por partido em todos os confrontos do turno: o mesmo partido sempre do mesmo lado,
+// para a leitura ser consistente entre Presidente e governadores. Nada de ordem ideológica: o par
+// de Presidente é ancorado pelo número (menor à esquerda) e o resto se propaga pelos confrontos
+// (o adversário de quem está à esquerda fica à direita). Em 2026: PT, PSD, Republicanos e PSDB à
+// esquerda; PL, PP, União e MDB à direita. Sem como decidir (ciclo ou partido isolado), vale o número.
+export type Lados = Map<string, 0 | 1>;
+export function ladosPorPartido(disputas: { candidatos: Candidato[] }[]): Lados {
+  const pares = disputas.map((d) => porNumero(d.candidatos.slice(0, 2))).filter((p) => p.length === 2) as [Candidato, Candidato][];
+  const vizinhos = new Map<string, string[]>();
+  for (const [a, b] of pares) {
+    vizinhos.set(a.partido, [...(vizinhos.get(a.partido) ?? []), b.partido]);
+    vizinhos.set(b.partido, [...(vizinhos.get(b.partido) ?? []), a.partido]);
+  }
+  const lados: Lados = new Map();
+  for (const [esq, dir] of pares) { // a 1ª disputa é a de Presidente (a rota a devolve primeiro)
+    if (lados.has(esq.partido) || lados.has(dir.partido)) continue;
+    lados.set(esq.partido, 0);
+    const fila = [esq.partido];
+    for (let p = fila.shift(); p !== undefined; p = fila.shift()) {
+      for (const v of vizinhos.get(p) ?? []) {
+        if (!lados.has(v)) { lados.set(v, lados.get(p) === 0 ? 1 : 0); fila.push(v); }
+      }
+    }
+  }
+  return lados;
+}
+
+// Os dois finalistas na ordem esquerda/direita
+export function ordenarConfronto(candidatos: Candidato[], lados?: Lados): [Candidato, Candidato] | null {
+  const [a, b] = porNumero(candidatos.slice(0, 2));
+  if (!a || !b) return null;
+  const la = lados?.get(a.partido), lb = lados?.get(b.partido);
+  if (la !== undefined && lb !== undefined && la === lb) return [a, b]; // ciclo: vale o número
+  if (la === 1 || lb === 0) return [b, a];
+  return [a, b];
+}
+
+// Cores: a do partido de cada finalista (paleta.ts, validada par a par); quem não estiver na lista
+// (não deveria acontecer no 2º turno) cai numa série automática que não colida com a do outro.
+function cores(a: Candidato, b: Candidato, cargo: number, uf: string): [string, string] {
+  const fa = corDoFinalista(2, cargo, uf, a.numero), fb = corDoFinalista(2, cargo, uf, b.numero);
   const livres = ['var(--s0)', 'var(--s1)', 'var(--s2)'].filter((c) => c !== fa && c !== fb);
   const ca = fa ?? livres.shift()!;
   const cb = fb && fb !== ca ? fb : livres.find((c) => c !== ca)!;
@@ -50,10 +87,11 @@ function BarraConfronto({ a, b, cor }: { a: Candidato; b: Candidato; cor: [strin
 }
 
 export function ConfrontoPresidente({ candidatos }: { candidatos: Candidato[] }) {
-  const finalistas = porNumero(candidatos.slice(0, 2));
-  const [a, b] = finalistas;
-  if (!a || !b) return null;
-  const cor = cores(a, b);
+  // Presidente é a âncora dos lados: a ordem pelo número já é a de referência
+  const par = ordenarConfronto(candidatos);
+  if (!par) return null;
+  const [a, b] = par;
+  const cor = cores(a, b, 1, 'br');
   const temVotos = a.votos + b.votos > 0;
   const lado = (c: Candidato, i: number) => (
     <div className={`confronto-lado${i === 1 ? ' confronto-lado-direita' : ''}`}>
@@ -61,7 +99,8 @@ export function ConfrontoPresidente({ candidatos }: { candidatos: Candidato[] })
       <div className="confronto-lado-texto">
         <strong>{c.nome}</strong>
         <span>{c.partido} · {c.numero}</span>
-        <span className="confronto-pct" style={{ color: temVotos ? cor[i] : undefined }}>{temVotos ? pct(c.percentual) : '–'}</span>
+        {/* Texto na cor de texto (legível em qualquer tema); a cor do partido vai no marcador e na barra */}
+        <span className="confronto-pct"><i className="marcador-cor" style={{ background: cor[i] }} aria-hidden="true" />{temVotos ? pct(c.percentual) : '–'}</span>
         {temVotos && <span className="confronto-votos">{votos(c.votos)}</span>}
       </div>
     </div>
@@ -91,6 +130,7 @@ export function Governadores({ intervaloMs, onAbrir }: { intervaloMs: number; on
     return () => { ctrl.abort(); clearTimeout(timer); };
   }, [intervaloMs]);
 
+  const lados = ladosPorPartido(disputas ?? []);
   const governadores = (disputas ?? []).filter((d) => d.cargo === 3)
     .sort((x, y) => (NOMES_UF[x.uf] ?? x.uf).localeCompare(NOMES_UF[y.uf] ?? y.uf, 'pt-BR'));
   if (!governadores.length) return null;
@@ -103,9 +143,10 @@ export function Governadores({ intervaloMs, onAbrir }: { intervaloMs: number; on
       </div>
       <ul className="governadores-lista">
         {governadores.map((d) => {
-          const [a, b] = porNumero(d.candidatos);
-          if (!a || !b) return null;
-          const cor = cores(a, b, false);
+          const par = ordenarConfronto(d.candidatos, lados);
+          if (!par) return null;
+          const [a, b] = par;
+          const cor = cores(a, b, d.cargo, d.uf);
           const temVotos = a.votos + b.votos > 0;
           const nomeUf = NOMES_UF[d.uf] ?? d.uf.toUpperCase();
           const descricao = temVotos
@@ -121,8 +162,8 @@ export function Governadores({ intervaloMs, onAbrir }: { intervaloMs: number; on
                       (no celular, dividindo linha com o percentual, sobravam 4 letras) */}
                   {temVotos && (
                     <span className="governador-pcts">
-                      <strong style={{ color: cor[0] }}>{pct(a.percentual)}</strong>
-                      <strong style={{ color: cor[1] }}>{pct(b.percentual)}</strong>
+                      <strong><i className="marcador-cor" style={{ background: cor[0] }} aria-hidden="true" />{pct(a.percentual)}</strong>
+                      <strong>{pct(b.percentual)}<i className="marcador-cor marcador-cor-depois" style={{ background: cor[1] }} aria-hidden="true" /></strong>
                     </span>
                   )}
                   <BarraConfronto a={a} b={b} cor={cor} />

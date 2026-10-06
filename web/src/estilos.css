@@ -15,6 +15,7 @@
   --segundo-turno: #5b9bf7;
   --contexto: #3c4766;
   --ao-vivo: #22c58b;
+  /* Cores de partido (--partido-*): geradas por web/src/cores.ts, fonte única */
   /* Séries: mesma paleta de web/src/paleta.ts (usada aqui nos pontos de legenda) */
   --s0: #5b9bf7; --s1: #ef8a4e; --s2: #30d19b; --s3: #e0a93a;
   --s4: #ec84ac; --s5: #4ad66d; --s6: #a996f5; --s7: #ef6b6b;
@@ -741,6 +742,11 @@ tbody th { font-weight: 500; }
   font: 700 2rem/1.05 'Barlow Condensed', sans-serif; font-variant-numeric: tabular-nums; color: var(--tinta); margin-top: .25rem;
 }
 .confronto-votos { font-variant-numeric: tabular-nums; }
+/* Marcador da cor do candidato ao lado do percentual (o texto fica na cor de texto) */
+.marcador-cor { display: inline-block; width: .6em; height: .6em; border-radius: 2px; margin-right: .3em; vertical-align: .12em; }
+.marcador-cor-depois { margin: 0 0 0 .3em; }
+.confronto-lado-direita .confronto-pct { display: inline-flex; flex-direction: row-reverse; align-items: baseline; justify-content: flex-start; gap: .3em; }
+.confronto-lado-direita .confronto-pct .marcador-cor { margin: 0; }
 .confronto-barra {
   position: relative; display: flex; height: .75rem; border-radius: 999px; overflow: hidden; background: var(--linha);
 }

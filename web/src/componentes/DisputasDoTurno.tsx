@@ -4,6 +4,7 @@ import { NOMES_UF } from '../../../shared/ufs.ts';
 import { buscarDisputas } from '../api.ts';
 import { Bandeira } from './Bandeira.tsx';
 import { Foto } from './Cartao.tsx';
+import { ladosPorPartido, ordenarConfronto, type Lados } from './PlacarSegundoTurno.tsx';
 
 // Tela de espera do 2º turno, abaixo do cronômetro: o que se vota e onde. Presidente em todo o
 // país; Governador só nos estados que tiveram 2º turno; os demais estados votam só para Presidente.
@@ -22,9 +23,11 @@ function lerEstadoSalvo(): string | null {
   }
 }
 
-function Confronto({ candidatos, grande = false }: { candidatos: Candidato[]; grande?: boolean }) {
-  const [a, b] = candidatos;
-  if (!a || !b) return <p className="disputas-vazio">Candidatos ainda não disponíveis.</p>;
+// Mesmo lado por partido em todos os confrontos (regra em PlacarSegundoTurno.tsx)
+function Confronto({ candidatos, lados, grande = false }: { candidatos: Candidato[]; lados: Lados; grande?: boolean }) {
+  const par = ordenarConfronto(candidatos, lados);
+  if (!par) return <p className="disputas-vazio">Candidatos ainda não disponíveis.</p>;
+  const [a, b] = par;
   const lado = (c: Candidato) => (
     <span className="disputas-candidato">
       <Foto c={c} />
@@ -63,6 +66,7 @@ export function DisputasDoTurno({ turno }: { turno: string }) {
     return erro ? <p className="resumo-estados">Não foi possível carregar as disputas do {turno}. Nova tentativa em 30s.</p> : null;
   }
 
+  const lados = ladosPorPartido(disputas);
   const presidente = disputas.find((d) => d.cargo === 1 && d.uf === 'br');
   const estaduais = disputas.filter((d) => d.uf !== 'br').sort((a, b) => porNome(a.uf, b.uf));
   const ufsComEstadual = new Set(estaduais.map((d) => d.uf));
@@ -86,7 +90,7 @@ export function DisputasDoTurno({ turno }: { turno: string }) {
       {presidente && (
         <div className="disputas-bloco">
           <h3>Presidente <span className="disputas-onde">em todo o país e no exterior</span></h3>
-          <Confronto candidatos={presidente.candidatos} grande />
+          <Confronto candidatos={presidente.candidatos} lados={lados} grande />
         </div>
       )}
 
@@ -104,7 +108,7 @@ export function DisputasDoTurno({ turno }: { turno: string }) {
                   {nome(d.uf)}
                   {estaduais.some((x) => x.uf === d.uf && x.cargo !== d.cargo) && <span className="disputas-onde">{d.nome}</span>}
                 </span>
-                <Confronto candidatos={d.candidatos} />
+                <Confronto candidatos={d.candidatos} lados={lados} />
               </li>
             ))}
           </ul>

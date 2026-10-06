@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Candidato, ConfigPublica, EstadoPanorama, Panorama, PontoHistorico, Resultado, VisaoEstado } from '../../../shared/tipos.ts';
 import { NOMES_UF, REGIOES } from '../../../shared/ufs.ts';
 import { agora as relogio, ajustarCandidatos, buscarEstado, buscarHistorico, buscarPanorama, buscarResultado, comTurno, mesclarHistorico, turnoDaTela } from '../api.ts';
@@ -9,7 +9,8 @@ import { Foto } from './Cartao.tsx';
 import { Evolucao } from './Evolucao.tsx';
 import { MapaMini } from './MapaMini.tsx';
 import { Novidades } from './Novidades.tsx';
-import { MAX_SERIES, type Tema } from '../paleta.ts';
+import { MAX_SERIES, corDoFinalista, type Tema } from '../paleta.ts';
+import { coresDaDisputa } from '../cores.ts';
 import { ResumoLideranca } from './ResumoLideranca.tsx';
 import { ConfrontoPresidente, Governadores } from './PlacarSegundoTurno.tsx';
 
@@ -204,6 +205,9 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
       .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }))
       .map((n, i) => [n, i] as const));
   }, [candidatos, historico]);
+  // Cores do gráfico: finalista do 2º turno > cor do partido sem colisão (mesma regra da disputa)
+  const coresDosCandidatos = useMemo(() => coresDaDisputa(tema, candidatos.filter((c) => slots.has(c.numero))), [tema, slots, candidatos]);
+  const corDe = useCallback((n: string) => corDoFinalista(turnoDaTela(), 1, 'br', n) ?? coresDosCandidatos.get(n), [coresDosCandidatos]);
 
   const estadosSemExterior = (panorama?.estados ?? []).filter((e) => e.uf !== 'zz');
   const concluidos = estadosSemExterior.filter((e) => (e.pst ?? 0) >= 100).length;
@@ -290,6 +294,7 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
 
       <div className="inicio-grade-2col">
         <Evolucao historico={historico} slots={slots}
+          corDe={corDe}
           por="hora" onPor={() => {}}
           ativo={null} onDestacar={() => {}} onFixar={() => {}}
           tema={tema} referencia50 compacto />

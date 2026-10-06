@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Panorama } from '../../../shared/tipos.ts';
 import { buscarPanorama } from '../api.ts';
-import { MAX_SERIES, corFixa } from '../paleta.ts';
+import { turnoDaTela } from '../api.ts';
+import { corDoPartido } from '../cores.ts';
+import { MAX_SERIES, corDoFinalista } from '../paleta.ts';
 import { MapaBrasil } from './MapaBrasil.tsx';
 
 // Mapa compacto da home: totalização por estado com alternância de cargo
@@ -44,12 +46,13 @@ export function MapaMini({ intervaloMs, onAbrirEstado, onAbrirMapa, cargos }: {
       .slice(0, MAX_SERIES)
       .map((n, i) => [n, i] as const));
   }, [dados]);
-  const corDoCandidato = useCallback((c: { numero: string; nome: string }) => {
-    const fixa = corFixa(c.nome);
+  // Finalista do 2º turno (validado par a par) > cor do partido > série automática
+  const corDoCandidato = useCallback((c: { numero: string; nome: string; partido?: string }, uf?: string) => {
+    const fixa = corDoFinalista(turnoDaTela(), cargo, uf, c.numero) ?? corDoPartido(c.partido);
     if (fixa) return fixa;
     const s = slots.get(c.numero);
     return s === undefined ? undefined : `var(--s${s})`;
-  }, [slots]);
+  }, [slots, cargo]);
 
   return (
     <section className="inicio-bloco inicio-mapa-mini" aria-labelledby="inicio-mapa-titulo">

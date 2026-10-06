@@ -16,7 +16,8 @@ import { PorEstado } from './componentes/PorEstado.tsx';
 import { ResumoLideranca } from './componentes/ResumoLideranca.tsx';
 import { VisaoEstado } from './componentes/VisaoEstado.tsx';
 import { dataHora, horaDoAparelho, pct, semAcento, votos } from './formato.ts';
-import { corSerie, MAX_SERIES, useTema } from './paleta.ts';
+import { corDoFinalista, corSerie, MAX_SERIES, useTema } from './paleta.ts';
+import { coresDaDisputa } from './cores.ts';
 import { NOMES_UF } from '../../shared/ufs.ts';
 
 const POR_PAGINA = 24;
@@ -267,6 +268,17 @@ export function App() {
       .map((n, i) => [n, i] as const));
   }, [resultado, historico]);
 
+  // Cor de cada candidato colorido (os do `slots`): finalista do 2º turno (validado par a par) >
+  // cor do partido sem colisão na disputa (cores.ts). Fora do top, a cor de contexto (cinza).
+  // Prioridade pelos votos (a ordem do resultado); quem só está no histórico vem por último
+  const coresDosCandidatos = useMemo(() => {
+    const doResultado = (resultado?.candidatos ?? []).filter((c) => slots.has(c.numero));
+    const resto = [...slots.keys()].filter((n) => !doResultado.some((c) => c.numero === n)).map((numero) => ({ numero }));
+    return coresDaDisputa(tema, [...doResultado, ...resto]);
+  }, [tema, slots, resultado]);
+  const corDe = useCallback((numero: string) => corDoFinalista(turno, cargo, uf, numero) ?? coresDosCandidatos.get(numero),
+    [turno, cargo, uf, coresDosCandidatos]);
+
   const noGrafico = useMemo(() => new Set(historico.flatMap((p) => p.cand.map((c) => c.numero))), [historico]);
   const ativo = fixado ?? destacado;
   const fixar = useCallback((n: string) => setFixado((f) => (f === n ? null : n)), []);
@@ -312,6 +324,11 @@ export function App() {
       <SidebarDesktop secao={secao} onIr={ir} tema={tema} onAlternarTema={alternarTema} />
 
       <main className="conteudo">
+        {cfgServidor?.simulacao && (
+          <p className="faixa-simulacao" role="note">
+            <strong>Simulação</strong> · dados fictícios gerados para ensaiar o 2º turno. Não são resultados do TSE.
+          </p>
+        )}
         <header className="topo">
           <div className="topo-titulo">
             {/* Título e seletor de turno na mesma linha (quebra para baixo em telas estreitas) */}
@@ -324,11 +341,6 @@ export function App() {
                 ir('inicio');
               }}>
                 Eleições <span className="topo-ano">2026</span>
-        {cfgServidor?.simulacao && (
-          <p className="faixa-simulacao" role="note">
-            <strong>Simulação</strong> · dados fictícios gerados para ensaiar o 2º turno. Não são resultados do TSE.
-          </p>
-        )}
               </a>
             </h1>
             {turnosServidor.length > 1 && (
@@ -504,7 +516,7 @@ export function App() {
           <ol className="cartoes" aria-label="Candidatos, do mais votado ao menos votado">
             {visiveis.map((c, i) => (
               <Cartao key={c.numero} c={c}
-                cor={corSerie(tema, slots.get(c.numero))}
+                cor={slots.has(c.numero) ? (corDe(c.numero) ?? corSerie(tema, slots.get(c.numero))) : corSerie(tema, undefined)}
                 noGrafico={noGrafico.has(c.numero)}
                 ativo={ativo === c.numero}
                 esmaecido={ativo !== null && ativo !== c.numero}
@@ -525,6 +537,7 @@ export function App() {
 
         {subAba === 'evolucao' && (
           <Evolucao historico={historico} slots={slots} por={por} onPor={setPor}
+            corDe={corDe}
             ativo={ativo} onDestacar={setDestacado} onFixar={fixar} tema={tema}
             referencia50={!proporcional && vagas === 1} />
         )}
