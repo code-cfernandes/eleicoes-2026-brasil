@@ -1,11 +1,14 @@
 import { useState } from 'react';
+import { emSimulacao } from '../api.ts';
 import { testarNotificacao } from '../push.ts';
 
 // "Testar notificação": o servidor manda um push na hora só para este aparelho e diz o que o
 // serviço de push respondeu. Separa "o servidor não conseguiu enviar" de "o aparelho não mostrou".
+// Só no modo simulação (em produção a rota nem existe).
 export function TesteNotificacao() {
   const [enviando, setEnviando] = useState(false);
   const [mensagem, setMensagem] = useState('');
+  if (!emSimulacao()) return null;
 
   async function testar() {
     setEnviando(true);

@@ -175,8 +175,30 @@ Códigos dos cargos: `1` Presidente, `3` Governador, `5` Senador, `6` Dep. feder
 npm run dev:api     # backend com recarga automática (porta 3000)
 npm run dev:web     # frontend Vite com proxy para a API
 npm run typecheck   # tipos do backend e do frontend
-npm run simular     # cria data/simulado.db com uma apuração fictícia para testar
+npm run simular     # modo simulação: ensaio do 2º turno com TSE falso (veja abaixo)
 ```
+
+### Modo simulação (ensaio do 2º turno)
+
+Com `SIMULACAO=1`, o servidor sobe um TSE falso interno e ensaia o dia da eleição de ponta a
+ponta, pelo mesmo código de produção: descoberta dos códigos, 404 antes da publicação, arquivos
+zerados, cronômetro, apuração com viradas, notificações, novidades, "eleito" e encerramento.
+O 1º turno, a lista de eleições e as fotos vêm do TSE de verdade (precisa de internet).
+
+| Momento | O que acontece |
+|---|---|
+| subida | TSE ainda sem o 2º turno (404): a tela mostra os finalistas zerados |
+| +20 s | arquivos zerados publicados |
+| +`SIMULACAO_ESPERA_MIN` (2) | fim do cronômetro, a apuração começa |
+| +`SIMULACAO_DURACAO_MIN` (15) | 100% em todas as disputas; "eleito" sai a partir de 95% |
+
+- Resultados sorteados a cada execução; Presidente sempre tem uma virada no meio da apuração.
+- Banco próprio (`simulacao.db`, na mesma pasta do banco real), recriado a cada execução: o
+  histórico real não é tocado. IA desligada.
+- A tela mostra a faixa **SIMULAÇÃO**, os pushes saem com "[Simulação]" no título e o botão
+  "Testar notificação neste aparelho" aparece (só existe nesse modo).
+- Ative o sino de novo na simulação: as inscrições ficam no banco da simulação.
+- Docker: `SIMULACAO=1 docker compose up -d --build`. **Nunca** publique com `SIMULACAO=1`.
 
 ```
 server/    backend em TypeScript, executado direto pelo Node 24 (sem etapa de build)

@@ -154,6 +154,8 @@ export interface ConfigPublica {
   /** Turnos configurados, em ordem; o último é o atual (o único coletado ao vivo) */
   turnos: TurnoPublico[];
   turnoAtual: number;
+  /** Modo simulação (SIMULACAO=1): dados fictícios de um TSE falso, para ensaio. A tela avisa. */
+  simulacao: boolean;
   // Campos abaixo: espelho do turno atual (compatibilidade com telas antigas em cache)
   inicioApuracao: number | null;
   turno: string;

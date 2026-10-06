@@ -242,6 +242,8 @@ export type Deteccao =
   | { tipo: 'virada'; entrou: Candidato }
   | { tipo: 'definido'; eleitos: Candidato[]; segundoTurno: Candidato[] };
 
+// Simulação: todo push sai marcado, para ninguém confundir com resultado real
+const PREFIXO = config.simulacao ? '[Simulação] ' : '';
 const pctBR = (v: number) => `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
 // "ANDRE DO PRADO" -> "Andre do Prado": iniciais maiúsculas, partículas (da, de, do, dos, das, e) minúsculas
 export const nomeProprio = (s: string) => s.toLowerCase()
@@ -308,7 +310,7 @@ export function avaliar(d: Resultado): { aviso: Aviso | null; deteccoes: Detecca
   const placar = cand.slice(0, 3).filter((c) => c.votos > 0)
     .map((c) => `${nomeProprio(c.nome)} ${pctBR(c.percentual)}`).join(', ');
   const aviso: Aviso = {
-    titulo: `${cfg.nome}, ${NOMES_UF[uf] ?? uf.toUpperCase()}${turno > 1 ? ` (${turno}º turno)` : ''}`,
+    titulo: `${PREFIXO}${cfg.nome}, ${NOMES_UF[uf] ?? uf.toUpperCase()}${turno > 1 ? ` (${turno}º turno)` : ''}`,
     corpo: [...linhas, placar && `${placar} (${pctBR(d.secoesTotalizadas)} totalizado)`].filter(Boolean).join('\n'),
     url: `/?cargo=${cargo}&uf=${uf}&turno=${turno}`,
     tag: `apuracao-${uf}-${cargo}`, // no aparelho, o aviso novo da disputa substitui o anterior
@@ -388,7 +390,7 @@ export function enviar(uf: string, cargo: number, aviso: Aviso) {
 export function enviarNovidades(ev: EventoApuracao) {
   const inscritos = sql.inscritosNovidades.all() as { endpoint: string; p256dh: string; auth: string }[];
   if (!inscritos.length) return 0;
-  const payload = JSON.stringify({ titulo: 'Novidades', corpo: ev.texto, url: `/?aba=novidades&turno=${ev.turno}`, tag: 'novidades' });
+  const payload = JSON.stringify({ titulo: `${PREFIXO}Novidades`, corpo: ev.texto, url: `/?aba=novidades&turno=${ev.turno}`, tag: 'novidades' });
   for (const i of inscritos) {
     fila.push({ inscricao: { endpoint: i.endpoint, keys: { p256dh: i.p256dh, auth: i.auth } }, payload, topico: 'novidades', urgente: false, ttl: TTL_NOVIDADES_S });
   }
@@ -413,7 +415,7 @@ export async function enviarTeste(endpoint: string): Promise<ResultadoTeste> {
   if (ultimosTestes.size > 10_000) ultimosTestes.clear();
   ultimosTestes.set(endpoint, agora);
   const payload = JSON.stringify({
-    titulo: 'Teste de notificação',
+    titulo: `${PREFIXO}Teste de notificação`,
     corpo: 'Tudo certo: este aparelho recebe os avisos da apuração.',
     url: '/',
     tag: 'teste',

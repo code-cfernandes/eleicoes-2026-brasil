@@ -31,6 +31,11 @@ services:
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       IA_INTERVALO_MIN: ${IA_INTERVALO_MIN:-15}
       NOTICIA_INTERVALO_MIN: ${NOTICIA_INTERVALO_MIN:-5}
+      # Modo simulação: ensaio do 2º turno com TSE falso e dados fictícios. NUNCA em produção.
+      SIMULACAO: ${SIMULACAO:-0}
+      SIMULACAO_ESPERA_MIN: ${SIMULACAO_ESPERA_MIN:-2}
+      SIMULACAO_DURACAO_MIN: ${SIMULACAO_DURACAO_MIN:-15}
+      SIMULACAO_GERACAO_SEGUNDOS: ${SIMULACAO_GERACAO_SEGUNDOS:-20}
       # Fixos: dentro do container, sempre no volume e na porta 3000
       HISTORICO_DB: /app/data/eleicoes.db
       FOTOS_DIR: /app/data/fotos

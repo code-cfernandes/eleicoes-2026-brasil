@@ -324,6 +324,11 @@ export function App() {
                 ir('inicio');
               }}>
                 Eleições <span className="topo-ano">2026</span>
+        {cfgServidor?.simulacao && (
+          <p className="faixa-simulacao" role="note">
+            <strong>Simulação</strong> · dados fictícios gerados para ensaiar o 2º turno. Não são resultados do TSE.
+          </p>
+        )}
               </a>
             </h1>
             {turnosServidor.length > 1 && (

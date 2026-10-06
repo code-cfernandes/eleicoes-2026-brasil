@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json && tsc -p web/tsconfig.json && vite build",
     "typecheck": "tsc -p tsconfig.json && tsc -p web/tsconfig.json",
     "eleicoes": "node --env-file-if-exists=.env scripts/listar-eleicoes.ts",
-    "simular": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/simular.ts"
+    "simular": "SIMULACAO=1 node --env-file-if-exists=.env --disable-warning=ExperimentalWarning server/index.ts"
   },
   "dependencies": {
     "compression": "^1.8.2",

@@ -22,11 +22,15 @@ async function json<T>(url: string, signal?: AbortSignal): Promise<T> {
 // sai do cabeçalho Date do /api/config (precisão de 1s); abaixo de 2s, vale o relógio local.
 let desvioRelogio = 0;
 export const agora = () => Date.now() + desvioRelogio;
+// Modo simulação do servidor (dados fictícios): liga o botão de teste de notificação
+let simulacao = false;
+export const emSimulacao = () => simulacao;
 
 export async function buscarConfig(): Promise<ConfigPublica> {
   const r = await fetch('/api/config', { cache: 'no-store' });
   const corpo = await r.json();
   if (!r.ok) throw new Error(corpo?.erro ?? `HTTP ${r.status}`);
+  simulacao = !!(corpo as ConfigPublica).simulacao;
   const doServidor = Date.parse(r.headers.get('Date') ?? '');
   if (doServidor) {
     const desvio = doServidor + 500 - Date.now(); // +500: o cabeçalho trunca no segundo
