@@ -16,12 +16,15 @@ const CARGOS_MAPA: { cargo: number; rotulo: string }[] = [
   { cargo: 5, rotulo: 'Senador' },
 ];
 
-export function Mapa({ intervaloMs, onAbrirEstado, onVerComoLista, cargoInicial, fixarCargo }: {
+export function Mapa({ intervaloMs, onAbrirEstado, onVerComoLista, cargoInicial, fixarCargo, cargos }: {
   intervaloMs: number; onAbrirEstado: (uf: string) => void; onVerComoLista?: () => void;
   /** Usado dentro da aba "Por estado" de uma disputa específica (Presidente/Governador/Senador) */
   cargoInicial?: number; fixarCargo?: boolean;
+  /** Cargos com disputa no turno em exibição (no 2º turno não há Senador) */
+  cargos?: number[];
 }) {
-  const [cargo, setCargo] = useState(cargoInicial ?? 1);
+  const opcoes = CARGOS_MAPA.filter((c) => !cargos || cargos.includes(c.cargo));
+  const [cargo, setCargo] = useState(cargoInicial ?? opcoes[0]?.cargo ?? 1);
   const [dados, setDados] = useState<Panorama>();
   const [erro, setErro] = useState<string>();
   const [alternanciaDisponivel, setAlternanciaDisponivel] = useState(!fixarCargo);
@@ -74,7 +77,7 @@ export function Mapa({ intervaloMs, onAbrirEstado, onVerComoLista, cargoInicial,
           <h2 id="mapa-titulo">Liderança por estado</h2>
           {alternanciaDisponivel && (
             <div className="alternar" role="group" aria-label="Cargo mostrado no mapa">
-              {CARGOS_MAPA.map((c) => (
+              {opcoes.map((c) => (
                 <button key={c.cargo} type="button" aria-pressed={cargo === c.cargo} onClick={() => setCargo(c.cargo)}>{c.rotulo}</button>
               ))}
             </div>

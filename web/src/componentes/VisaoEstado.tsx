@@ -122,6 +122,10 @@ export function VisaoEstado({ uf, intervaloMs, onVoltar, onAbrirDisputa }: {
         </p>
       )}
 
+      {dados && !dados.cargos.length && (
+        <p className="resumo resumo-espera">Não há disputa neste estado neste turno.</p>
+      )}
+
       {dados && (
         <div className="estado-cargos">
           {dados.cargos.map((c) => <BlocoCargo key={c.cargo} c={c} uf={uf} onAbrirDisputa={onAbrirDisputa} />)}

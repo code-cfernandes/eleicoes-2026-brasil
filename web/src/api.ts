@@ -1,14 +1,39 @@
 import type { ConfigPublica, Panorama, PontoHistorico, RespostaHistorico, Resultado, VisaoEstado } from '../../shared/tipos.ts';
 
+// Turno em exibição: toda rota de dados recebe ?turno=. O App define o turno antes de renderizar
+// e remonta o conteúdo quando ele muda (key), então cada componente já busca no turno certo.
+// Sem turno definido, o servidor usa o turno atual.
+let turnoEmVista: number | undefined;
+export const definirTurno = (turno: number | undefined) => { turnoEmVista = turno; };
+export const turnoDaTela = () => turnoEmVista;
+export const comTurno = (url: string) =>
+  turnoEmVista ? `${url}${url.includes('?') ? '&' : '?'}turno=${turnoEmVista}` : url;
+
 async function json<T>(url: string, signal?: AbortSignal): Promise<T> {
   // no-cache: o navegador revalida com If-None-Match; sem novidade, o servidor responde 304
-  const r = await fetch(url, { signal, cache: 'no-cache' });
+  const r = await fetch(comTurno(url), { signal, cache: 'no-cache' });
   const corpo = await r.json();
   if (!r.ok) throw new Error(corpo?.erro ?? `HTTP ${r.status}`);
   return corpo as T;
 }
 
-export const buscarConfig = () => json<ConfigPublica>('/api/config');
+// Relógio do servidor: o cronômetro e a virada para a tela de resultados não podem depender do
+// relógio do aparelho (um PC atrasado ficaria na contagem com a apuração já correndo). O desvio
+// sai do cabeçalho Date do /api/config (precisão de 1s); abaixo de 2s, vale o relógio local.
+let desvioRelogio = 0;
+export const agora = () => Date.now() + desvioRelogio;
+
+export async function buscarConfig(): Promise<ConfigPublica> {
+  const r = await fetch('/api/config', { cache: 'no-store' });
+  const corpo = await r.json();
+  if (!r.ok) throw new Error(corpo?.erro ?? `HTTP ${r.status}`);
+  const doServidor = Date.parse(r.headers.get('Date') ?? '');
+  if (doServidor) {
+    const desvio = doServidor + 500 - Date.now(); // +500: o cabeçalho trunca no segundo
+    desvioRelogio = Math.abs(desvio) > 2000 ? desvio : 0;
+  }
+  return corpo as ConfigPublica;
+}
 
 export const buscarPanorama = (signal?: AbortSignal, cargo?: number) =>
   json<Panorama>(`/api/panorama${cargo ? `?cargo=${cargo}` : ''}`, signal);

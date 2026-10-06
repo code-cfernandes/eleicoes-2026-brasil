@@ -10,7 +10,7 @@ const MAX_CONEXOES = envNumero('MAX_CONEXOES', 5000);
 const PING_MS = 25_000;             // abaixo do timeout ocioso típico de proxies (60s)
 const BUFFER_MAX = 64 * 1024;       // cliente que não consome nem isso está travado: derruba
 
-const assinantes = new Map<string, Set<Response>>(); // "uf:cargo" -> conexões abertas
+const assinantes = new Map<string, Set<Response>>(); // "turno:uf:cargo" -> conexões abertas
 let total = 0;
 
 function escrever(res: Response, msg: string) {
@@ -74,10 +74,10 @@ export function transmitirTodos(evento: string, dados: unknown) {
   }
 }
 
-// Disputas com alguém assistindo agora: entram no coletor automaticamente (canais globais não)
-export const disputasAssistidas = (): [string, number][] =>
-  [...assinantes.keys()].filter((k) => k.includes(':')).map((k) => {
-    const [uf, cargo] = k.split(':');
+// Disputas do turno com alguém assistindo agora: entram no coletor automaticamente (canais globais não)
+export const disputasAssistidas = (turno: number): [string, number][] =>
+  [...assinantes.keys()].filter((k) => k.startsWith(`${turno}:`)).map((k) => {
+    const [, uf, cargo] = k.split(':');
     return [uf!, Number(cargo)];
   });
 

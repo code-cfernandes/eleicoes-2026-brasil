@@ -1,28 +1,13 @@
 import { useEffect, useState } from 'react';
+import { turnoDaTela } from '../api.ts';
+import { api, ehIOS, inscricaoDoAparelho, instalado, suportaPush } from '../push.ts';
+import { TesteNotificacao } from './TesteNotificacao.tsx';
 
 // Botão "Avisar sobre esta disputa": inscreve o aparelho em notificações push da disputa aberta.
 
 type Estado =
   | 'carregando' | 'sem-suporte' | 'instalar-ios' | 'bloqueado'
   | 'desativado' | 'ativando' | 'ativado' | 'erro';
-
-const ehIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent)
-  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS se diz Mac
-const instalado = () => matchMedia('(display-mode: standalone)').matches
-  || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-const suportaPush = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-
-// Chave VAPID vem em base64url; o PushManager quer bytes
-function bytesDaChave(base64url: string) {
-  const b64 = (base64url + '='.repeat((4 - (base64url.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
-  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-}
-
-async function api(metodo: 'POST' | 'DELETE', caminho: string, corpo: unknown) {
-  const r = await fetch(caminho, { method: metodo, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
-  if (!r.ok) throw new Error((await r.json().catch(() => null))?.erro ?? `HTTP ${r.status}`);
-  return r.status === 204 ? null : r.json();
-}
 
 function Sino({ ativo }: { ativo: boolean }) {
   return (
@@ -45,21 +30,20 @@ export function Avisos({ uf, cargo, chave, proporcional }: { uf: string; cargo: 
       if (ehIOS() && !instalado()) return setEstado('instalar-ios');
       if (!suportaPush()) return setEstado('sem-suporte');
       if (Notification.permission === 'denied') return setEstado('bloqueado');
-      const reg = await navigator.serviceWorker.ready;
-      const inscricao = await reg.pushManager.getSubscription();
+      // Já refaz a inscrição se ela foi criada com uma chave VAPID antiga
+      const inscricao = await inscricaoDoAparelho(chave);
       if (!inscricao) return vivo && setEstado('desativado');
       const { disputas } = await api('POST', '/api/notificacoes/consultar', { endpoint: inscricao.endpoint }) as { disputas: string[] };
       if (vivo) setEstado(disputas.includes(`${uf}:${cargo}`) ? 'ativado' : 'desativado');
     })().catch(() => vivo && setEstado('desativado'));
     return () => { vivo = false; };
-  }, [uf, cargo]);
+  }, [uf, cargo, chave]);
 
   async function alternar() {
     setErro('');
-    const reg = await navigator.serviceWorker.ready;
     try {
       if (estado === 'ativado') {
-        const inscricao = await reg.pushManager.getSubscription();
+        const inscricao = await inscricaoDoAparelho(chave);
         if (inscricao) await api('DELETE', '/api/notificacoes', { endpoint: inscricao.endpoint, uf, cargo });
         setEstado('desativado');
         return;
@@ -71,8 +55,7 @@ export function Avisos({ uf, cargo, chave, proporcional }: { uf: string; cargo: 
         setEstado(permissao === 'denied' ? 'bloqueado' : 'desativado');
         return;
       }
-      const inscricao = await reg.pushManager.getSubscription()
-        ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytesDaChave(chave) });
+      const inscricao = (await inscricaoDoAparelho(chave, true))!;
       await api('POST', '/api/notificacoes', { inscricao: inscricao.toJSON(), uf, cargo });
       setEstado('ativado');
     } catch (e) {
@@ -96,9 +79,12 @@ export function Avisos({ uf, cargo, chave, proporcional }: { uf: string; cargo: 
 
   const ativo = estado === 'ativado';
   // Deputados não têm "virada": a eleição é por quociente partidário
+  // Os marcos seguem o servidor (MARCOS_POR_TURNO em notificacoes.ts): mais finos no 2º turno
   const quando = proporcional
     ? 'no início, a cada 25% totalizado e quando os eleitos forem definidos'
-    : 'no início, a cada 25% totalizado, em viradas e quando o resultado sair';
+    : (turnoDaTela() ?? 1) > 1
+      ? 'no início, em 10, 25, 50, 75, 90 e 95% totalizado, em viradas e quando o resultado sair'
+      : 'no início, a cada 25% totalizado, em viradas e quando o resultado sair';
   return (
     <div className="avisos">
       <button type="button" className="avisos-botao" aria-pressed={ativo} disabled={estado === 'ativando'} onClick={() => void alternar()}>
@@ -112,6 +98,7 @@ export function Avisos({ uf, cargo, chave, proporcional }: { uf: string; cargo: 
             ? `Você será avisado ${quando}. Toque para desativar.`
             : `Receba um aviso ${quando}.`}
       </p>
+      {ativo && <TesteNotificacao />}
     </div>
   );
 }

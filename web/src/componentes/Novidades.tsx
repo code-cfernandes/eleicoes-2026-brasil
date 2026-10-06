@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { EventoApuracao, TipoEvento } from '../../../shared/tipos.ts';
 import { NOMES_UF } from '../../../shared/ufs.ts';
+import { comTurno, turnoDaTela } from '../api.ts';
 import { horaMinuto } from '../formato.ts';
 import { AvisosNovidades } from './AvisosNovidades.tsx';
 
@@ -43,7 +44,7 @@ export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas, c
     const carregar = async () => {
       clearTimeout(timer);
       try {
-        const r = await fetch(`/api/novidades?limite=${limite ?? 30}`, { signal: ctrl.signal, cache: 'no-cache' });
+        const r = await fetch(comTurno(`/api/novidades?limite=${limite ?? 30}`), { signal: ctrl.signal, cache: 'no-cache' });
         if (r.status === 404) { setDisponivel(false); return; }
         if (r.ok) {
           const { eventos: lista } = await r.json() as { eventos: EventoApuracao[] };
@@ -65,6 +66,8 @@ export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas, c
       fonte.addEventListener('novidade', (ev) => {
         try {
           const e = JSON.parse((ev as MessageEvent<string>).data) as EventoApuracao;
+          // O canal é global: só entra o que é do turno em exibição
+          if (e.turno !== undefined && turnoDaTela() !== undefined && e.turno !== turnoDaTela()) return;
           setEventos((atual) => {
             const lista = atual ?? [];
             const jaTem = lista.some((x) => x.id === e.id);
@@ -92,7 +95,7 @@ export function Novidades({ intervaloMs, compacto = false, limite, onVerTodas, c
     const minId = Math.min(...eventos.map((e) => e.id));
     setCarregandoMais(true);
     try {
-      const r = await fetch(`/api/novidades?antes=${minId}&limite=30`, { cache: 'no-cache' });
+      const r = await fetch(comTurno(`/api/novidades?antes=${minId}&limite=30`), { cache: 'no-cache' });
       if (r.ok) {
         const { eventos: antigos } = await r.json() as { eventos: EventoApuracao[] };
         setTemMais(antigos.length >= 30);

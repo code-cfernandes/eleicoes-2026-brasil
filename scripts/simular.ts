@@ -27,7 +27,8 @@ for (let min = 17 * 60; min <= 23 * 60; min += 7) {
 
   const hg = `${pad(Math.floor(min / 60))}:${pad(min % 60)}:00`;
   const [d, m, a] = hoje.split('/').map(Number) as [number, number, number];
-  const ok = registrar('br', 1, {
+  const ok = registrar({
+    turno: 1,
     cargo: 1, nomeCargo: 'Presidente', uf: 'br', vagas: 1,
     atualizadoEm: `${hoje} ${hg}`,
     instante: Date.UTC(a, m - 1, d, Math.floor(min / 60) + 3, min % 60),

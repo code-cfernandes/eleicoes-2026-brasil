@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Candidato, ConfigPublica, EstadoPanorama, Panorama, PontoHistorico, Resultado, VisaoEstado } from '../../../shared/tipos.ts';
 import { NOMES_UF, REGIOES } from '../../../shared/ufs.ts';
-import { ajustarCandidatos, buscarEstado, buscarHistorico, buscarPanorama, buscarResultado, mesclarHistorico } from '../api.ts';
+import { agora as relogio, ajustarCandidatos, buscarEstado, buscarHistorico, buscarPanorama, buscarResultado, comTurno, mesclarHistorico } from '../api.ts';
 import { dataHora, pct, votos } from '../formato.ts';
 import { Avisos } from './Avisos.tsx';
 import { Bandeira } from './Bandeira.tsx';
@@ -43,14 +43,16 @@ function votosCompacto(v: number) {
 
 // Conta regressiva até o início da totalização, atualizada a cada minuto
 function useContagem(inicioApuracao: number | null) {
-  const [agora, setAgora] = useState(() => Date.now());
+  const [agora, setAgora] = useState(relogio);
   useEffect(() => {
     if (inicioApuracao === null || agora >= inicioApuracao) return;
-    const t = setInterval(() => setAgora(Date.now()), 30_000);
+    const t = setInterval(() => setAgora(relogio()), 30_000);
     return () => clearInterval(t);
   }, [inicioApuracao, agora]);
   if (inicioApuracao === null || agora >= inicioApuracao) return null;
   const faltamMin = Math.max(0, Math.round((inicioApuracao - agora) / 60_000));
+  // Mais de 2 dias: em dias (ex.: 2º turno visto semanas antes)
+  if (faltamMin >= 48 * 60) return `${Math.floor(faltamMin / (24 * 60))} dias`;
   const h = Math.floor(faltamMin / 60);
   const m = faltamMin % 60;
   return h > 0 ? `${h}h${m > 0 ? ` ${m}min` : ''}` : `${m}min`;
@@ -83,6 +85,8 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
   const [encerrado, setEncerrado] = useState(cfg?.finalizado ?? false);
 
   const intervaloMs = cfg?.intervaloMs ?? 30_000;
+  // Turno encerrado (ou anterior): os números não mudam mais; sem conexão ao vivo nem polling
+  const finalizado = cfg?.finalizado ?? false;
 
   // Placar nacional de Presidente, com SSE (mesmo padrão de App.tsx) + histórico para o gráfico
   useEffect(() => {
@@ -130,13 +134,14 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
       }
       if (ctrl.signal.aborted) return;
       if (deNovo) { deNovo = false; void carregar(); return; }
+      if (finalizado && versao !== undefined) return;
       seguranca = setTimeout(carregar, vivo ? 120_000 : intervaloMs);
     };
 
     let fonte: EventSource | undefined;
     let jaAbriu = false;
     const conectar = () => {
-      fonte = new EventSource('/api/eventos?uf=br&cargo=1');
+      fonte = new EventSource(comTurno('/api/eventos?uf=br&cargo=1'));
       fonte.onopen = () => {
         vivo = true; setAoVivo(true);
         if (jaAbriu) void carregar();
@@ -158,7 +163,7 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
     const aoVoltar = () => { if (!document.hidden) void carregar(); };
     document.addEventListener('visibilitychange', aoVoltar);
     void carregar();
-    conectar();
+    if (!finalizado) conectar();
     return () => {
       ctrl.abort();
       fonte?.close();
@@ -166,7 +171,7 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
       timers.forEach(clearTimeout);
       document.removeEventListener('visibilitychange', aoVoltar);
     };
-  }, [intervaloMs]);
+  }, [intervaloMs, finalizado]);
 
   // Panorama nacional (para indicador "Estados concluídos" e a grade "Pelo país")
   useEffect(() => {
@@ -183,7 +188,8 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
 
   const candidatos = resultado?.candidatos ?? [];
   const apuracaoComecou = (resultado?.secoesTotalizadas ?? 0) > 0 && candidatos.some((c) => c.votos > 0);
-  const top3 = candidatos.filter((c) => c.votos > 0).slice(0, 3);
+  // Antes da totalização, um confronto de poucos nomes (2º turno) já aparece, zerado
+  const top3 = apuracaoComecou || candidatos.length > 3 ? candidatos.filter((c) => c.votos > 0).slice(0, 3) : candidatos;
 
   useEffect(() => { setApuracaoComecouDados(apuracaoComecou); }, [apuracaoComecou]);
 
@@ -203,7 +209,9 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
       {mostrarContagem && (
         <section className="inicio-contagem" aria-live="polite">
           <p>
-            A totalização começa às 17h (horário de Brasília){faltam && <>, faltam <strong>{faltam}</strong></>}.
+            A totalização{cfg?.turno && cfg.turno !== '1º turno' ? ` do ${cfg.turno}` : ''} começa{' '}
+            {cfg?.inicioApuracao ? dataHora(cfg.inicioApuracao) : 'às 17h'} (horário de Brasília)
+            {faltam && <>, faltam <strong>{faltam}</strong></>}.
           </p>
           {cfg && <Avisos uf="br" cargo={1} chave={cfg.chavePush} proporcional={false} />}
         </section>
@@ -223,7 +231,7 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
               {erro
                 ? 'Sem conexão'
                 : resultado
-                  ? encerrado
+                  ? encerrado || finalizado
                     ? 'Encerrado'
                     : aoVivo ? <><span className="ao-vivo" aria-hidden="true" />Ao vivo</> : `Atualizado ${dataHora(resultado.instante ?? Date.now())}`
                   : 'Carregando…'}
@@ -266,7 +274,8 @@ export function Inicio({ cfg, tema, onAbrirDisputa, onAbrirEstado, onAbrirPorEst
           )}
         </section>
 
-        <MapaMini intervaloMs={intervaloMs} onAbrirEstado={onAbrirEstado} onAbrirMapa={onAbrirMapa} />
+        <MapaMini intervaloMs={intervaloMs} onAbrirEstado={onAbrirEstado} onAbrirMapa={onAbrirMapa}
+          cargos={cfg?.cargos.map((c) => c.codigo)} />
       </div>
 
       <div className="inicio-grade-2col">

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { api, ehIOS, inscricaoDoAparelho, instalado, suportaPush } from '../push.ts';
+import { TesteNotificacao } from './TesteNotificacao.tsx';
 
 // Botão "Receber novidades por notificação": inscreve o aparelho no canal global de novidades
 // (as mesmas para todos os usuários), diferente dos avisos por disputa (Avisos.tsx).
@@ -6,23 +8,6 @@ import { useEffect, useState } from 'react';
 type Estado =
   | 'carregando' | 'sem-suporte' | 'instalar-ios' | 'bloqueado'
   | 'desativado' | 'ativando' | 'ativado' | 'erro';
-
-const ehIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent)
-  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const instalado = () => matchMedia('(display-mode: standalone)').matches
-  || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-const suportaPush = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-
-function bytesDaChave(base64url: string) {
-  const b64 = (base64url + '='.repeat((4 - (base64url.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
-  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-}
-
-async function api(metodo: 'POST' | 'DELETE', caminho: string, corpo: unknown) {
-  const r = await fetch(caminho, { method: metodo, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
-  if (!r.ok) throw new Error((await r.json().catch(() => null))?.erro ?? `HTTP ${r.status}`);
-  return r.status === 204 ? null : r.json();
-}
 
 function Sino({ ativo }: { ativo: boolean }) {
   return (
@@ -44,21 +29,19 @@ export function AvisosNovidades({ chave }: { chave: string }) {
       if (ehIOS() && !instalado()) return setEstado('instalar-ios');
       if (!suportaPush()) return setEstado('sem-suporte');
       if (Notification.permission === 'denied') return setEstado('bloqueado');
-      const reg = await navigator.serviceWorker.ready;
-      const inscricao = await reg.pushManager.getSubscription();
+      const inscricao = await inscricaoDoAparelho(chave);
       if (!inscricao) return vivo && setEstado('desativado');
       const { novidades } = await api('POST', '/api/notificacoes/consultar', { endpoint: inscricao.endpoint }) as { novidades?: boolean };
       if (vivo) setEstado(novidades ? 'ativado' : 'desativado');
     })().catch(() => vivo && setEstado('desativado'));
     return () => { vivo = false; };
-  }, []);
+  }, [chave]);
 
   async function alternar() {
     setErro('');
-    const reg = await navigator.serviceWorker.ready;
     try {
       if (estado === 'ativado') {
-        const inscricao = await reg.pushManager.getSubscription();
+        const inscricao = await inscricaoDoAparelho(chave);
         if (inscricao) await api('DELETE', '/api/notificacoes/novidades', { endpoint: inscricao.endpoint });
         setEstado('desativado');
         return;
@@ -69,8 +52,7 @@ export function AvisosNovidades({ chave }: { chave: string }) {
         setEstado(permissao === 'denied' ? 'bloqueado' : 'desativado');
         return;
       }
-      const inscricao = await reg.pushManager.getSubscription()
-        ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytesDaChave(chave) });
+      const inscricao = (await inscricaoDoAparelho(chave, true))!;
       await api('POST', '/api/notificacoes/novidades', { inscricao: inscricao.toJSON() });
       setEstado('ativado');
     } catch (e) {
@@ -106,6 +88,7 @@ export function AvisosNovidades({ chave }: { chave: string }) {
             ? 'Você será avisado a cada novidade da totalização. Toque para desativar.'
             : 'Receba as novidades em tempo real no celular, mesmo com a tela fechada.'}
       </p>
+      {ativo && <TesteNotificacao />}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { db } from './banco.ts';
-import { config, CARGOS, envNumero } from './config.ts';
+import { config, CARGOS, defTurno, envNumero } from './config.ts';
 import { resumoAtual, votosTotaisAte } from './historico.ts';
-import { enviarNovidades, nomeProprio, type Deteccao } from './notificacoes.ts';
+import { enviarNovidades, marcosDoTurno, nomeProprio, type Deteccao } from './notificacoes.ts';
 import { CANAL_NOVIDADES, transmitir, transmitirTodos } from './eventos.ts';
 import { iaDisponivel, intervaloIaMs, redigir } from './ia.ts';
 import { NOMES_UF } from '../shared/ufs.ts';
@@ -34,6 +34,9 @@ import type { EventoApuracao, Resultado, TipoEvento } from '../shared/tipos.ts';
 // Os intervalos usam o horário de geração do TSE (o "instante"), não o relógio do servidor.
 // Só gera evento o que o servidor coleta: para a linha do tempo completa, MONITORAR deve
 // incluir br:1,*:1,*:3,*:5 (e os deputados, se quiser o agregado).
+//
+// TURNOS: cada evento pertence a um turno (coluna turno; a tela lê um turno por vez). As chaves
+// do 1º turno ficam como sempre foram; as dos seguintes ganham o prefixo "t2:" (ver ch()).
 //
 // IDEMPOTÊNCIA: cada evento tem uma chave única (ex.: "marco:br:1:50"); INSERT OR IGNORE
 // descarta repetidos, e o estado de marcos/viradas/definido é o mesmo persistido do push
@@ -73,25 +76,31 @@ db.exec(`
 // Migração aditiva: 1 = texto já redigido pela IA (DeepSeek); 0 = frase-modelo ainda no lugar
 const colunasNovidade = new Set((db.prepare('PRAGMA table_info(novidade)').all() as { name: string }[]).map((c) => c.name));
 if (!colunasNovidade.has('ia')) db.exec('ALTER TABLE novidade ADD COLUMN ia INTEGER NOT NULL DEFAULT 0');
+// Turno do evento: tudo o que já existia é do 1º turno
+if (!colunasNovidade.has('turno')) db.exec('ALTER TABLE novidade ADD COLUMN turno INTEGER NOT NULL DEFAULT 1');
+db.exec('CREATE INDEX IF NOT EXISTS novidade_turno ON novidade (turno, id)');
+
+// Chave de evento/estado no turno: o 1º turno mantém as chaves antigas (base de produção)
+const ch = (turno: number, chave: string) => (turno === 1 ? chave : `t${turno}:${chave}`);
 
 const sql = {
-  inserir: db.prepare(`INSERT OR IGNORE INTO novidade (chave, instante, tipo, uf, cargo, texto, criado_em)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`),
+  inserir: db.prepare(`INSERT OR IGNORE INTO novidade (chave, turno, instante, tipo, uf, cargo, texto, criado_em)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
   // Eventos "finais" (conclusão) já nascem com ia=1: são definitivos, não passam pela IA
-  inserirFinal: db.prepare(`INSERT OR IGNORE INTO novidade (chave, instante, tipo, uf, cargo, texto, criado_em, ia)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1)`),
+  inserirFinal: db.prepare(`INSERT OR IGNORE INTO novidade (chave, turno, instante, tipo, uf, cargo, texto, criado_em, ia)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`),
   ultimoId: db.prepare('SELECT coalesce(max(id), 0) AS id FROM novidade'),
-  ultimoDoTipo: db.prepare('SELECT instante FROM novidade WHERE tipo = ? AND cargo = ? ORDER BY id DESC LIMIT 1'),
-  ler: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto, ia FROM novidade
-    WHERE id > ? ORDER BY id DESC LIMIT ?`),
-  lerAntes: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto, ia FROM novidade
-    WHERE id < ? ORDER BY id DESC LIMIT ?`),
+  ultimoDoTipo: db.prepare('SELECT instante FROM novidade WHERE turno = ? AND tipo = ? AND cargo = ? ORDER BY id DESC LIMIT 1'),
+  ler: db.prepare(`SELECT id, turno, instante, tipo, uf, cargo, texto, ia FROM novidade
+    WHERE turno = ? AND id > ? ORDER BY id DESC LIMIT ?`),
+  lerAntes: db.prepare(`SELECT id, turno, instante, tipo, uf, cargo, texto, ia FROM novidade
+    WHERE turno = ? AND id < ? ORDER BY id DESC LIMIT ?`),
   // Presidente/Brasil ainda com frase-modelo, do mais antigo para o mais novo (fila de redação).
   // 'progresso' fica de fora: já é um balanço factual e frequente, não precisa de IA.
-  pendenteIA: db.prepare(`SELECT id, instante, tipo, uf, cargo, texto FROM novidade
+  pendenteIA: db.prepare(`SELECT id, turno, instante, tipo, uf, cargo, texto FROM novidade
     WHERE uf = 'br' AND cargo = 1 AND ia = 0 AND tipo != 'progresso' ORDER BY id LIMIT 1`),
   marcarIA: db.prepare('UPDATE novidade SET texto = ?, ia = 1 WHERE id = ?'),
-  temTipo: db.prepare('SELECT count(*) AS n FROM novidade WHERE uf = ? AND cargo = ? AND tipo = ?'),
+  temTipo: db.prepare('SELECT count(*) AS n FROM novidade WHERE turno = ? AND uf = ? AND cargo = ? AND tipo = ?'),
   estado: db.prepare('SELECT valor FROM novidade_estado WHERE chave = ?'),
   salvarEstado: db.prepare(`INSERT INTO novidade_estado (chave, valor) VALUES (?, ?)
     ON CONFLICT (chave) DO UPDATE SET valor = excluded.valor`),
@@ -120,6 +129,7 @@ const pct = (v: number) => `${decimal(v)}%`;
 const lista = (itens: string[]) => (itens.length <= 1 ? itens.join('') : `${itens.slice(0, -1).join(', ')} e ${itens.at(-1)}`);
 const HORA_BR = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
 const horaMinuto = (ms: number) => HORA_BR.format(ms);
+const doTurno = (turno: number) => (turno > 1 ? ` do ${turno}º turno` : '');
 
 // 1.234.567 -> "1,2 milhão de votos"; 2.400.000 -> "2,4 milhões de votos"; 850.000 -> "850 mil votos"
 export function quantidadeVotos(n: number): string {
@@ -158,12 +168,13 @@ function conclusaoUF(d: { candidatos: CandConclusao[]; uf: string }): string {
 }
 
 // --- Gravação
-interface Novo { chave: string; instante: number; tipo: TipoEvento; uf: string; cargo: number; texto: string; final?: boolean }
+// `chave` sem o prefixo do turno: gravar() aplica ch()
+interface Novo { chave: string; turno: number; instante: number; tipo: TipoEvento; uf: string; cargo: number; texto: string; final?: boolean }
 
 function gravar(e: Novo): EventoApuracao | null {
-  const r = (e.final ? sql.inserirFinal : sql.inserir).run(e.chave, e.instante, e.tipo, e.uf, e.cargo, e.texto, Date.now());
+  const r = (e.final ? sql.inserirFinal : sql.inserir).run(ch(e.turno, e.chave), e.turno, e.instante, e.tipo, e.uf, e.cargo, e.texto, Date.now());
   if (!r.changes) return null;
-  const ev: EventoApuracao = { id: Number(r.lastInsertRowid), instante: e.instante, tipo: e.tipo, uf: e.uf, cargo: e.cargo, texto: e.texto };
+  const ev: EventoApuracao = { id: Number(r.lastInsertRowid), turno: e.turno, instante: e.instante, tipo: e.tipo, uf: e.uf, cargo: e.cargo, texto: e.texto };
   ultimoId = Math.max(ultimoId, ev.id);
   prontos.clear();
   return ev;
@@ -199,20 +210,20 @@ function publicar(evs: (EventoApuracao | null)[]) {
 
 // --- Entrada: chamada a cada resultado novo do TSE, depois de avaliar() (push)
 export function processar(d: Resultado, deteccoes: Deteccao[]) {
-  const { uf, cargo } = d;
+  const { turno, uf, cargo } = d;
   const cfg = CARGOS[cargo];
   if (!cfg) return;
   const instante = d.instante ?? Date.now();
   maiorInstante = Math.max(maiorInstante, instante);
   const brasilPresidente = cargo === 1 && uf === 'br';
   const novos: Novo[] = [];
-  const base = { instante, uf, cargo };
+  const base = { turno, instante, uf, cargo };
 
   for (const det of deteccoes) {
     if (det.tipo === 'marco' && cargo === 1) {
       if (brasilPresidente) {
         novos.push(det.marco === 0
-          ? { ...base, chave: 'inicio:br:1', tipo: 'inicio', texto: `A totalização para Presidente começou às ${horaMinuto(instante)}.` }
+          ? { ...base, chave: 'inicio:br:1', tipo: 'inicio', texto: `A totalização${doTurno(turno)} para Presidente começou às ${horaMinuto(instante)}.` }
           : det.marco === 100
             ? { ...base, chave: 'marco:br:1:100', tipo: 'marco', texto: conclusaoBrasil(d), final: true }
             : { ...base, chave: `marco:br:1:${det.marco}`, tipo: 'marco', texto: `Brasil passou de ${det.marco}% das seções totalizadas para Presidente.` });
@@ -244,6 +255,7 @@ export function processar(d: Resultado, deteccoes: Deteccao[]) {
 
     if (det.tipo === 'definido' && cfg.proporcional) {
       transacao(() => {
+        // Deputados só existem no 1º turno
         const p = lerEstado<Pendente>(`dep-pendente:${cargo}`) ?? { ufs: [], instante: 0, desde: Date.now() };
         if (!p.ufs.includes(uf)) p.ufs.push(uf);
         p.instante = Math.max(p.instante, instante);
@@ -266,7 +278,7 @@ function liberarDeputados(cargo: number): EventoApuracao | null {
   const chaveEst = `dep-pendente:${cargo}`;
   const p = lerEstado<Pendente>(chaveEst);
   if (!p?.ufs.length) return null;
-  const anterior = sql.ultimoDoTipo.get('definido', cargo) as { instante: number } | undefined;
+  const anterior = sql.ultimoDoTipo.get(1, 'definido', cargo) as { instante: number } | undefined;
   const pode = !anterior || maiorInstante - anterior.instante >= INTERVALO_DEP_MS || Date.now() - p.desde >= ESPERA_MAX_DEP_MS;
   if (!pode) return null;
   const nomes = p.ufs.map(lugar);
@@ -274,6 +286,7 @@ function liberarDeputados(cargo: number): EventoApuracao | null {
     sql.apagarEstado.run(chaveEst);
     return gravar({
       chave: `definido:dep:${cargo}:${[...p.ufs].sort().join('-')}`,
+      turno: 1,
       instante: Math.max(p.instante, anterior?.instante ?? 0),
       tipo: 'definido',
       uf: p.ufs.length === 1 ? p.ufs[0]! : 'br',
@@ -296,15 +309,15 @@ export function pulsar() {
 function ritmo(d: Resultado, instante: number): EventoApuracao | null {
   const votos = d.totais?.votosTotais;
   if (!votos || d.secoesTotalizadas <= 0) return null;
-  const anterior = sql.ultimoDoTipo.get('ritmo', 1) as { instante: number } | undefined;
+  const anterior = sql.ultimoDoTipo.get(d.turno, 'ritmo', 1) as { instante: number } | undefined;
   if (anterior && instante - anterior.instante < JANELA_RITMO_MS) return null;
-  const base = votosTotaisAte('br', 1, instante - JANELA_RITMO_MS);
+  const base = votosTotaisAte(d.turno, 'br', 1, instante - JANELA_RITMO_MS);
   if (!base || instante - base.instante > 2 * JANELA_RITMO_MS) return null;
   const delta = votos - base.votos;
   if (delta < VOTOS_MIN_RITMO) return null;
   const minutos = Math.round((instante - base.instante) / 60_000);
   return gravar({
-    chave: `ritmo:br:1:${instante}`, instante, tipo: 'ritmo', uf: 'br', cargo: 1,
+    chave: `ritmo:br:1:${instante}`, turno: d.turno, instante, tipo: 'ritmo', uf: 'br', cargo: 1,
     texto: `+${quantidadeVotos(delta)} totalizados para Presidente nos últimos ${minutos} minutos.`,
   });
 }
@@ -318,16 +331,17 @@ function diferenca(d: Resultado, instante: number): EventoApuracao | null {
   if (!a || !b) return null;
   const valor = Math.round((a.percentual - b.percentual) * 100) / 100;
   const par = `${a.numero},${b.numero}`;
-  const base = lerEstado<BaseDif>('diferenca:br:1');
+  const chaveEst = ch(d.turno, 'diferenca:br:1');
+  const base = lerEstado<BaseDif>(chaveEst);
   if (!base || base.par !== par) {
-    salvarEstado('diferenca:br:1', { valor, instante, par } satisfies BaseDif);
+    salvarEstado(chaveEst, { valor, instante, par } satisfies BaseDif);
     return null;
   }
   if (Math.abs(valor - base.valor) < DIF_MIN_PP || instante - base.instante < INTERVALO_DIF_MS) return null;
   return transacao(() => {
-    salvarEstado('diferenca:br:1', { valor, instante, par } satisfies BaseDif);
+    salvarEstado(chaveEst, { valor, instante, par } satisfies BaseDif);
     return gravar({
-      chave: `diferenca:br:1:${instante}`, instante, tipo: 'diferenca', uf: 'br', cargo: 1,
+      chave: `diferenca:br:1:${instante}`, turno: d.turno, instante, tipo: 'diferenca', uf: 'br', cargo: 1,
       texto: `A diferença entre ${nome(a)} e ${nome(b)} para Presidente passou de ${decimal(base.valor)} para ${decimal(valor)} pontos percentuais.`,
     });
   });
@@ -336,13 +350,13 @@ function diferenca(d: Resultado, instante: number): EventoApuracao | null {
 // --- Leitura (GET /api/novidades): corpo pronto por (desde, limite) enquanto não há evento novo
 const prontos = new Map<string, Buffer>();
 
-interface LinhaNovidade { id: number; instante: number; tipo: TipoEvento; uf: string; cargo: number; texto: string; ia?: number }
+interface LinhaNovidade { id: number; turno: number; instante: number; tipo: TipoEvento; uf: string; cargo: number; texto: string; ia?: number }
 
-export function lerNovidades(desde: number, limite: number): Buffer {
-  const chave = `${desde}:${limite}`;
+export function lerNovidades(turno: number, desde: number, limite: number): Buffer {
+  const chave = `${turno}:${desde}:${limite}`;
   let json = prontos.get(chave);
   if (!json) {
-    const linhas = sql.ler.all(desde, limite) as unknown as LinhaNovidade[];
+    const linhas = sql.ler.all(turno, desde, limite) as unknown as LinhaNovidade[];
     const eventos: EventoApuracao[] = linhas.map(({ ia, ...e }) => ({ ...e, ...(ia ? { fonte: 'ia' as const } : {}) }));
     json = Buffer.from(JSON.stringify({ eventos }));
     if (prontos.size > 500) prontos.clear();
@@ -353,8 +367,8 @@ export function lerNovidades(desde: number, limite: number): Buffer {
 
 // Página mais antiga do histórico (id < antes, mais recentes primeiro). Sem cache pronto:
 // consultada raramente (botão "ver mais antigas"), e o texto pode mudar quando a IA reescreve.
-export function lerNovidadesAntes(antes: number, limite: number): Buffer {
-  const linhas = sql.lerAntes.all(antes, limite) as unknown as LinhaNovidade[];
+export function lerNovidadesAntes(turno: number, antes: number, limite: number): Buffer {
+  const linhas = sql.lerAntes.all(turno, antes, limite) as unknown as LinhaNovidade[];
   const eventos: EventoApuracao[] = linhas.map(({ ia, ...e }) => ({ ...e, ...(ia ? { fonte: 'ia' as const } : {}) }));
   return Buffer.from(JSON.stringify({ eventos }));
 }
@@ -370,7 +384,7 @@ let ultimaChamadaIA = 0;
 function aplicarRedigida(p: LinhaNovidade, textoIA: string) {
   sql.marcarIA.run(textoIA, p.id);
   prontos.clear();
-  const ev: EventoApuracao = { id: p.id, instante: p.instante, tipo: p.tipo, uf: p.uf, cargo: p.cargo, texto: textoIA, fonte: 'ia' };
+  const ev: EventoApuracao = { id: p.id, turno: p.turno, instante: p.instante, tipo: p.tipo, uf: p.uf, cargo: p.cargo, texto: textoIA, fonte: 'ia' };
   console.log(`[ia] ${textoIA}`);
   transmitir(CANAL_NOVIDADES, 'novidade', ev);
 }
@@ -423,15 +437,16 @@ export function gerarResumoPeriodico() {
   if (estaTudoConcluido() || Date.now() - ultimaGeracaoPeriodica < NOTICIA_INTERVALO_MS) return;
   ultimaGeracaoPeriodica = Date.now();
 
-  const r = resumoAtual('br', 1);
-  if (!r || r.pst <= 0) return; // a totalização ainda não começou
+  const turno = config.turnoAtual;
+  const r = resumoAtual(turno, 'br', 1);
+  if (!r || r.pst <= 0) return; // a totalização ainda não começou (ou o turno não tem Presidente)
 
   // Primeira notícia: o início, com a hora oficial (config) ou a do primeiro dado
-  if (!(sql.temTipo.get('br', 1, 'inicio') as { n: number }).n) {
-    const inicio = config.inicioApuracao ?? r.instante;
+  if (!(sql.temTipo.get(turno, 'br', 1, 'inicio') as { n: number }).n) {
+    const inicio = defTurno(turno)?.inicioApuracao ?? r.instante;
     publicar([gravar({
-      chave: 'inicio:br:1', instante: inicio, tipo: 'inicio', uf: 'br', cargo: 1,
-      texto: `A totalização para Presidente começou às ${horaMinuto(inicio)}.`,
+      chave: 'inicio:br:1', turno, instante: inicio, tipo: 'inicio', uf: 'br', cargo: 1,
+      texto: `A totalização${doTurno(turno)} para Presidente começou às ${horaMinuto(inicio)}.`,
     })]);
     return;
   }
@@ -440,16 +455,17 @@ export function gerarResumoPeriodico() {
   if (r.pst >= 100) return;
 
   // Balanço periódico: só quando o TSE publicou algo novo desde o último balanço
-  const base = lerEstado<{ pst: number; instante: number }>('progresso:br:1');
+  const chaveEst = ch(turno, 'progresso:br:1');
+  const base = lerEstado<{ pst: number; instante: number }>(chaveEst);
   if (base && r.instante <= base.instante) return;
   const aumento = base ? r.pst - base.pst : 0;
   const lider = r.top[0];
   const trechos = [`Brasil: ${decimal(r.pst)}% das seções totalizadas`];
   if (base) trechos.push(aumento > 0 ? `+${decimal(aumento)} p.p. desde o último balanço` : 'sem mudança no percentual');
   if (lider) trechos.push(`${nome(lider)} lidera com ${decimal(lider.percentual)}%`);
-  salvarEstado('progresso:br:1', { pst: r.pst, instante: r.instante });
+  salvarEstado(chaveEst, { pst: r.pst, instante: r.instante });
   publicar([gravar({
-    chave: `progresso:br:1:${r.instante}`, instante: r.instante, tipo: 'progresso', uf: 'br', cargo: 1,
+    chave: `progresso:br:1:${r.instante}`, turno, instante: r.instante, tipo: 'progresso', uf: 'br', cargo: 1,
     texto: `${trechos.join(', ')}.`,
   })]);
 }
@@ -466,14 +482,14 @@ export function reconstruirHistorico() {
   ultimoId = 0;
   prontos.clear();
 
-  const disputas = db.prepare('SELECT DISTINCT uf, cargo FROM snapshot ORDER BY cargo, uf').all() as { uf: string; cargo: number }[];
-  const snapsSql = db.prepare('SELECT id, instante, pst FROM snapshot WHERE uf = ? AND cargo = ? AND pst > 0 ORDER BY instante');
+  const disputas = db.prepare('SELECT DISTINCT turno, uf, cargo FROM snapshot ORDER BY turno, cargo, uf').all() as { turno: number; uf: string; cargo: number }[];
+  const snapsSql = db.prepare('SELECT id, instante, pst FROM snapshot WHERE turno = ? AND uf = ? AND cargo = ? AND pst > 0 ORDER BY instante');
   const topSql = db.prepare('SELECT numero, nome, votos, percentual FROM voto WHERE snapshot_id = ? ORDER BY votos DESC LIMIT ?');
 
-  for (const { uf, cargo } of disputas) {
+  for (const { turno, uf, cargo } of disputas) {
     const cfg = CARGOS[cargo];
     if (!cfg) continue;
-    const snaps = snapsSql.all(uf, cargo) as { id: number; instante: number; pst: number }[];
+    const snaps = snapsSql.all(turno, uf, cargo) as { id: number; instante: number; pst: number }[];
     if (!snaps.length) continue;
 
     const vagas = cargo === 5 ? 2 : 1;
@@ -485,24 +501,24 @@ export function reconstruirHistorico() {
     for (const s of snaps) {
       if (brasil && !inicioFeito) {
         inicioFeito = true;
-        const inicio = config.inicioApuracao ?? s.instante;
-        gravar({ chave: 'inicio:br:1', instante: inicio, tipo: 'inicio', uf: 'br', cargo: 1,
-          texto: `A totalização para Presidente começou às ${horaMinuto(inicio)}.` });
+        const inicio = defTurno(turno)?.inicioApuracao ?? s.instante;
+        gravar({ chave: 'inicio:br:1', turno, instante: inicio, tipo: 'inicio', uf: 'br', cargo: 1,
+          texto: `A totalização${doTurno(turno)} para Presidente começou às ${horaMinuto(inicio)}.` });
       }
 
       if (brasil) {
         // Só o maior marco atingido por snapshot (um salto de 20% para 55% gera só o de 50%,
         // como na detecção em tempo real: marcos saltados não são inventados)
-        const m = Math.max(-1, ...[25, 50, 75, 90, 100].filter((x) => s.pst >= x));
+        const m = Math.max(-1, ...marcosDoTurno(turno).filter((x) => x > 0 && s.pst >= x));
         if (m > marcoAtual) {
           marcoAtual = m;
           if (m === 100) {
             const cands = (topSql.all(s.id, 2) as { nome: string; votos: number; percentual: number }[])
               .map((c) => ({ nome: c.nome, votos: c.votos, percentual: c.percentual, eleito: false, situacao: '' }));
-            gravar({ chave: 'marco:br:1:100', instante: s.instante, tipo: 'marco', uf: 'br', cargo: 1,
+            gravar({ chave: 'marco:br:1:100', turno, instante: s.instante, tipo: 'marco', uf: 'br', cargo: 1,
               texto: conclusaoBrasil({ candidatos: cands }), final: true });
           } else {
-            gravar({ chave: `marco:br:1:${m}`, instante: s.instante, tipo: 'marco', uf: 'br', cargo: 1,
+            gravar({ chave: `marco:br:1:${m}`, turno, instante: s.instante, tipo: 'marco', uf: 'br', cargo: 1,
               texto: `Brasil passou de ${m}% das seções totalizadas para Presidente.` });
           }
         }
@@ -511,7 +527,7 @@ export function reconstruirHistorico() {
       if (cargo === 1 && !brasil && uf !== 'zz' && s.pst >= 100) {
         const cands = (topSql.all(s.id, 2) as { nome: string; votos: number; percentual: number }[])
           .map((c) => ({ nome: c.nome, votos: c.votos, percentual: c.percentual, eleito: false, situacao: '' }));
-        gravar({ chave: `concluido:${uf}:1`, instante: s.instante, tipo: 'estado-concluido', uf, cargo: 1,
+        gravar({ chave: `concluido:${uf}:1`, turno, instante: s.instante, tipo: 'estado-concluido', uf, cargo: 1,
           texto: conclusaoUF({ candidatos: cands, uf }), final: true });
         break;
       }
@@ -524,7 +540,7 @@ export function reconstruirHistorico() {
           const entrou = top.find((c) => !antes.has(c.numero));
           if (entrou) {
             const quem = vagas === 1 ? 'passou à frente' : `passou a ocupar uma das ${vagas} primeiras posições`;
-            gravar({ chave: `virada:${uf}:${cargo}:${s.instante}`, instante: s.instante, tipo: 'virada', uf, cargo,
+            gravar({ chave: `virada:${uf}:${cargo}:${s.instante}`, turno, instante: s.instante, tipo: 'virada', uf, cargo,
               texto: `${cfg.nome}, ${lugar(uf)}: ${nome(entrou)} ${quem} (${pct(s.pst)} das seções totalizadas).` });
           }
         }

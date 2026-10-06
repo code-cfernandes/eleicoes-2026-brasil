@@ -13,10 +13,13 @@ const CARGOS_MAPA: { cargo: number; rotulo: string }[] = [
   { cargo: 5, rotulo: 'Senador' },
 ];
 
-export function MapaMini({ intervaloMs, onAbrirEstado, onAbrirMapa }: {
+export function MapaMini({ intervaloMs, onAbrirEstado, onAbrirMapa, cargos }: {
   intervaloMs: number; onAbrirEstado: (uf: string) => void; onAbrirMapa: () => void;
+  /** Cargos com disputa no turno em exibição (no 2º turno não há Senador) */
+  cargos?: number[];
 }) {
-  const [cargo, setCargo] = useState(1);
+  const opcoes = CARGOS_MAPA.filter((c) => !cargos || cargos.includes(c.cargo));
+  const [cargo, setCargo] = useState(opcoes[0]?.cargo ?? 1);
   const [dados, setDados] = useState<Panorama>();
 
   useEffect(() => {
@@ -56,7 +59,7 @@ export function MapaMini({ intervaloMs, onAbrirEstado, onAbrirMapa }: {
       </div>
 
       <div className="alternar inicio-mapa-alternar" role="group" aria-label="Cargo mostrado no mapa">
-        {CARGOS_MAPA.map((c) => (
+        {opcoes.map((c) => (
           <button key={c.cargo} type="button" aria-pressed={cargo === c.cargo} onClick={() => setCargo(c.cargo)}>{c.rotulo}</button>
         ))}
       </div>
