@@ -180,12 +180,15 @@ npm run typecheck   # tipos do backend e do frontend
 
 ```
 server/    backend em TypeScript, executado direto pelo Node 24 (sem etapa de build)
-  tse.ts            único ponto que conhece o formato do JSON do TSE
-  historico.ts      SQLite: snapshots, consulta por faixa de 10 min e incremental
-  eventos.ts        conexões ao vivo (SSE)
-  novidades.ts      linha do tempo: marcos, viradas, conclusão e balanços periódicos
-  notificacoes.ts   Web Push: inscrições, detecção de marcos e fila de envio
-  ia.ts             redação de notícias pela DeepSeek (opcional, via DEEPSEEK_API_KEY)
+  index.ts          inicialização: monta o app, registra rotas e tarefas, sobe e desliga
+  api/              rotas HTTP: validam a entrada e montam a resposta (ETag, 304, gzip)
+  servicos/         regras de aplicação: resultados e cache do TSE, coletor, turnos e códigos,
+                    notificações, linha do tempo (novidades, redação por IA, reconstrução), SSE
+  dominio/          regras puras, sem I/O: cargos, detecção de marcos e viradas, textos em pt-BR
+  dados/            SQLite: conexão, tabelas e consultas (histórico, inscrições, alertas, novidades…)
+  integracoes/      sistemas externos: TSE (único ponto que conhece o JSON dele), fotos, IA, Web Push
+  config/           variáveis de ambiente e configuração dos turnos
+                    cada camada só importa as de baixo: api → servicos → dominio/dados/integracoes → config
 web/       frontend React + Vite + Recharts, service worker e manifest do PWA
   componente/MapaBrasil.tsx   mapa do Brasil (andamento e líder por estado)
 shared/    tipos usados pelo backend e pelo frontend

@@ -1,5 +1,5 @@
 import type { Cargo } from '../../shared/tipos.ts';
-import { UFS } from './ufs.ts';
+import { UFS } from '../../shared/ufs.ts';
 
 // Código do cargo no TSE -> eleição a que pertence e onde há resultado publicado
 export const CARGOS: Record<number, Cargo> = {

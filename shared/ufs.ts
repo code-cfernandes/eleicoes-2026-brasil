@@ -1,3 +1,6 @@
+// As 27 unidades da federação (sem 'br' nem o exterior 'zz'), na ordem usada pelo TSE
+export const UFS = 'ac al ap am ba ce df es go ma mt ms mg pa pb pr pe pi rj rn rs ro rr sc sp se to'.split(' ');
+
 // Nome por extenso de cada abrangência (tela e texto das notificações)
 export const NOMES_UF: Record<string, string> = {
   br: 'Brasil', zz: 'Exterior', ac: 'Acre', al: 'Alagoas', ap: 'Amapá', am: 'Amazonas', ba: 'Bahia', ce: 'Ceará',

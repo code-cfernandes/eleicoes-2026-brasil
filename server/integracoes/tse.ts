@@ -1,5 +1,6 @@
-import { config, CARGOS, defTurno } from './config/index.ts';
-import type { Candidato, Resultado, SaudeDados, Totais } from '../shared/tipos.ts';
+import { CARGOS } from '../dominio/cargos.ts';
+import { config, defTurno } from '../config/config.ts';
+import type { Candidato, Resultado, SaudeDados, Totais } from '../../shared/tipos.ts';
 
 const pad = (n: string | number, len: number) => String(n).padStart(len, '0');
 
@@ -111,6 +112,16 @@ export function saudeTSE(): SaudeDados['tse'] {
     latenciaMediaMs: saude.latenciaMediaMs === null ? null : Math.round(saude.latenciaMediaMs),
     falhasRecentes: falhas.length,
   };
+}
+
+// Lista de eleições publicadas (comum/config/ele-c.json, ~22 kB): códigos de cada eleição e,
+// no campo cdt2, o código do 2º turno. Usada pela descoberta automática (servicos/codigos.ts).
+export interface EleicaoTSE { cd: string; cdt2?: string; t: string; nm: string; abr?: { cp?: { cd: string }[] }[] }
+export interface ListaDeEleicoes { pl?: { c: string; e?: EleicaoTSE[] }[] }
+export async function buscarListaDeEleicoes(): Promise<ListaDeEleicoes> {
+  const res = await fetch(`${config.base}/comum/config/ele-c.json`, { signal: AbortSignal.timeout(10_000) });
+  if (!res.ok) throw new Error(`TSE respondeu ${res.status}`);
+  return (await res.json()) as ListaDeEleicoes;
 }
 
 export async function buscarResultado(uf: string, cargo: number, turno: number): Promise<Resultado> {

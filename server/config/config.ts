@@ -1,7 +1,35 @@
-import type { DefTurno } from '../types/index.ts';
-import { env, envNumero, expandirMonitorar } from '../utils/index.ts';
+import type { TipoEleicao } from '../../shared/tipos.ts';
+import { CARGOS } from '../dominio/cargos.ts';
+import { env, envNumero } from './ambiente.ts';
 
 // Tudo que muda entre eleições/turnos fica aqui (via variáveis de ambiente), nada hardcoded no resto do código.
+
+// "br:1,sp:*,*:3" -> pares [uf, cargo]. "*" expande para todas as UFs/cargos válidos.
+function expandirMonitorar(spec: string): [string, number][] {
+  const pares = new Map<string, [string, number]>();
+  for (const item of spec.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+    const [uf = '', cargo = ''] = item.split(':');
+    const cargos = cargo === '*' ? Object.values(CARGOS) : [CARGOS[Number(cargo)]].filter((c) => c !== undefined);
+    for (const c of cargos) {
+      for (const u of uf === '*' ? c.ufs.filter((x) => x !== 'br') : [uf]) {
+        if (c.ufs.includes(u)) pares.set(`${u}:${c.codigo}`, [u, c.codigo]);
+      }
+    }
+  }
+  return [...pares.values()];
+}
+
+// Um turno só existe se ao menos um código de eleição estiver definido. O turno "atual" é o
+// último definido: é o único coletado do TSE; os anteriores ficam arquivados (só leitura).
+// Os códigos vêm do ambiente ou, na falta dele, da descoberta automática (codigos.ts), que pode
+// preenchê-los depois da subida: por isso `turnos` e `turnoAtual` são calculados a cada leitura.
+export interface DefTurno {
+  numero: number;
+  nome: string;
+  eleicao: Record<TipoEleicao, string | undefined>;
+  /** Início da apuração (epoch ms), para a contagem regressiva */
+  inicioApuracao: number | null;
+}
 
 const definicoes: DefTurno[] = [
   {

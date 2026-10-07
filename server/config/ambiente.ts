@@ -4,7 +4,6 @@ export function env(nome: string): string | undefined {
   const v = process.env[nome]?.trim();
   return v ? v : undefined;
 }
-
 // Número positivo ou o padrão (nunca NaN/0 por engano)
 export function envNumero(nome: string, padrao: number): number {
   const n = Number(env(nome));

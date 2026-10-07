@@ -1,6 +1,7 @@
-import { db } from './banco.ts';
-import { config } from './config/index.ts';
-import type { TipoEleicao } from '../shared/tipos.ts';
+import { codigosGravados, salvarCodigo } from '../dados/codigos.ts';
+import { buscarListaDeEleicoes, type EleicaoTSE, type ListaDeEleicoes } from '../integracoes/tse.ts';
+import { config } from '../config/config.ts';
+import type { TipoEleicao } from '../../shared/tipos.ts';
 
 // Descoberta automática dos códigos de eleição no TSE (comum/config/ele-c.json).
 // - 1º turno: entre as eleições do ciclo com t="1", a federal é a que tem Presidente (cargo 1)
@@ -13,29 +14,14 @@ import type { TipoEleicao } from '../shared/tipos.ts';
 
 const TIPOS: TipoEleicao[] = ['federal', 'estadual'];
 const CARGO_DO_TIPO: Record<TipoEleicao, string> = { federal: '1', estadual: '3' };
-const TEMPO_MAX_MS = 10_000;
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS codigo_eleicao (
-    turno  INTEGER NOT NULL,
-    tipo   TEXT    NOT NULL,
-    codigo TEXT    NOT NULL,
-    PRIMARY KEY (turno, tipo)
-  ) WITHOUT ROWID;
-`);
-const salvar = db.prepare(`INSERT INTO codigo_eleicao (turno, tipo, codigo) VALUES (?, ?, ?)
-  ON CONFLICT (turno, tipo) DO UPDATE SET codigo = excluded.codigo`);
 
 // Ambiente vazio + código já descoberto antes: usa o do banco (na carga do módulo, antes da coleta)
 const doAmbiente = new Set<string>(); // "turno:tipo" definidos pelo ambiente
 for (const d of config.definicoes) for (const t of TIPOS) if (d.eleicao[t]) doAmbiente.add(`${d.numero}:${t}`);
-for (const r of db.prepare('SELECT turno, tipo, codigo FROM codigo_eleicao').all() as { turno: number; tipo: TipoEleicao; codigo: string }[]) {
+for (const r of codigosGravados()) {
   const d = config.definicoes.find((x) => x.numero === r.turno);
   if (d && !d.eleicao[r.tipo]) d.eleicao[r.tipo] = r.codigo;
 }
-
-interface EleicaoTSE { cd: string; cdt2?: string; t: string; nm: string; abr?: { cp?: { cd: string }[] }[] }
-interface ConfigTSE { pl?: { c: string; e?: EleicaoTSE[] }[] }
 
 const temCargo = (e: EleicaoTSE, cargo: string) => !!e.abr?.some((a) => a.cp?.some((c) => c.cd === cargo));
 const mesmoCodigo = (a?: string, b?: string) => !!a && !!b && Number(a) === Number(b);
@@ -51,7 +37,7 @@ function preencher(turno: number, tipo: TipoEleicao, codigo: string) {
   }
   if (!mesmoCodigo(d.eleicao[tipo], codigo)) console.log(`[codigos] ${turno}º turno ${tipo}: ${codigo} (descoberto no TSE)`);
   d.eleicao[tipo] = codigo;
-  salvar.run(turno, tipo, codigo);
+  salvarCodigo(turno, tipo, codigo);
 }
 
 const faltaAlgum = () => config.definicoes.some((d) => TIPOS.some((t) => !d.eleicao[t]));
@@ -68,11 +54,9 @@ export async function descobrirCodigos(): Promise<void> {
     if (conferido) return;
     conferido = true;
   }
-  let lista: ConfigTSE;
+  let lista: ListaDeEleicoes;
   try {
-    const res = await fetch(`${config.base}/comum/config/ele-c.json`, { signal: AbortSignal.timeout(TEMPO_MAX_MS) });
-    if (!res.ok) throw new Error(`TSE respondeu ${res.status}`);
-    lista = (await res.json()) as ConfigTSE;
+    lista = await buscarListaDeEleicoes();
   } catch (e) {
     console.error(`[codigos] não foi possível ler a lista de eleições do TSE (${(e as Error).message}); nova tentativa na próxima rodada`);
     return;
