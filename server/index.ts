@@ -3,7 +3,7 @@ import compression from 'compression';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
-import { config, CARGOS, defTurno } from './config.ts';
+import { config, CARGOS, defTurno } from './config/index.ts';
 import { buscarResultado, ErroTSE, saudeTSE } from './tse.ts';
 import { cargosDoTurno, descobrirTurnos, disputaExiste } from './turnos.ts';
 import { codigosPendentes, descobrirCodigos } from './codigos.ts';

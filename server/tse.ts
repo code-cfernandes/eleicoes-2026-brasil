@@ -1,4 +1,4 @@
-import { config, CARGOS, defTurno } from './config.ts';
+import { config, CARGOS, defTurno } from './config/index.ts';
 import type { Candidato, Resultado, SaudeDados, Totais } from '../shared/tipos.ts';
 
 const pad = (n: string | number, len: number) => String(n).padStart(len, '0');

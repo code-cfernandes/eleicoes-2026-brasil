@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { config } from './config.ts';
+import { config } from './config/index.ts';
 import { ufDaFoto, urlFoto } from './tse.ts';
 
 // Fotos oficiais do TSE com cache em disco: cada foto é baixada uma única vez,

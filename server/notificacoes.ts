@@ -2,7 +2,7 @@ import webpush, { type PushSubscription } from 'web-push';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { db } from './banco.ts';
-import { config, CARGOS, env, envNumero } from './config.ts';
+import { config, CARGOS, env, envNumero } from './config/index.ts';
 import { NOMES_UF } from '../shared/ufs.ts';
 import type { Candidato, EventoApuracao, Resultado } from '../shared/tipos.ts';
 

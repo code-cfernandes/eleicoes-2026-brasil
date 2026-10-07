@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { envNumero } from './config.ts';
+import { envNumero } from './config/index.ts';
 
 // Server-Sent Events: cada aparelho mantém uma conexão aberta para a disputa que está vendo.
 // O evento é só uma "campainha" (versão nova do TSE); os dados continuam vindo pelas rotas

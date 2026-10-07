@@ -1,5 +1,5 @@
 import { db } from './banco.ts';
-import { config, CARGOS, defTurno, envNumero } from './config.ts';
+import { config, CARGOS, defTurno, envNumero } from './config/index.ts';
 import { resumoAtual, votosTotaisAte } from './historico.ts';
 import { enviarNovidades, marcosDoTurno, nomeProprio, type Deteccao } from './notificacoes.ts';
 import { CANAL_NOVIDADES, transmitir, transmitirTodos } from './eventos.ts';

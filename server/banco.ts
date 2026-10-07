@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { config } from './config.ts';
+import { config } from './config/index.ts';
 
 // Um único SQLite para histórico e notificações (arquivo no volume do Docker)
 mkdirSync(dirname(config.historicoDb), { recursive: true });

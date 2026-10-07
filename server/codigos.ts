@@ -1,5 +1,5 @@
 import { db } from './banco.ts';
-import { config } from './config.ts';
+import { config } from './config/index.ts';
 import type { TipoEleicao } from '../shared/tipos.ts';
 
 // Descoberta automática dos códigos de eleição no TSE (comum/config/ele-c.json).

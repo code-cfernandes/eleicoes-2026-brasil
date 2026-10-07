@@ -1,5 +1,5 @@
 import { db } from './banco.ts';
-import { config, CARGOS, defTurno } from './config.ts';
+import { config, CARGOS, defTurno } from './config/index.ts';
 import type { Cargo, Resultado } from '../shared/tipos.ts';
 
 // Quais disputas existem em cada turno.
