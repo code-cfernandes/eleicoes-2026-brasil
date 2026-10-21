@@ -39,7 +39,8 @@ function Confronto({ candidatos, lados, grande = false }: { candidatos: Candidat
   return (
     <div className={`disputas-confronto${grande ? ' disputas-confronto-grande' : ''}`}>
       {lado(a)}
-      <span className="disputas-x" aria-label="contra">×</span>
+      {/* "VS" em selo, e não "×": o × pequeno era confundido com um ponto */}
+      <span className="disputas-x"><span aria-hidden="true">VS</span><span className="visualmente-oculto">contra</span></span>
       {lado(b)}
     </div>
   );
