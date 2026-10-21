@@ -1,5 +1,5 @@
-import { db } from './banco.ts';
-import type { PontoHistorico, RespostaHistorico, Resultado } from '../shared/tipos.ts';
+import { db, transacao } from './banco.ts';
+import type { PontoHistorico, RespostaHistorico, Resultado } from '../../shared/tipos.ts';
 
 // Um snapshot por geração do TSE (dg+hg); votos de cada candidato naquele instante.
 db.exec(`
@@ -43,20 +43,16 @@ const inserirVoto = db.prepare(
 
 // Grava o resultado se for uma geração nova do TSE (UNIQUE descarta repetidos).
 export function registrar(d: Resultado): boolean {
-  if (!d.instante) return false;
-  db.exec('BEGIN');
-  try {
-    const r = inserirSnapshot.run(d.turno, d.uf, d.cargo, d.atualizadoEm, d.instante, Date.now(), d.secoesTotalizadas,
+  const instante = d.instante;
+  if (!instante) return false;
+  return transacao(() => {
+    const r = inserirSnapshot.run(d.turno, d.uf, d.cargo, d.atualizadoEm, instante, Date.now(), d.secoesTotalizadas,
       d.totais?.votosTotais ?? null, d.totais?.validos ?? null);
     if (r.changes) {
       for (const c of d.candidatos) inserirVoto.run(r.lastInsertRowid, c.numero, c.nome, c.votos, c.percentual);
     }
-    db.exec('COMMIT');
     return r.changes > 0;
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
+  });
 }
 
 // Votos totais do snapshot mais recente com instante <= `ate` (base do evento "ritmo")
@@ -143,3 +139,13 @@ export function lerHistorico(
   };
 }
 
+// --- Leitura em lote para a reconstrução da linha do tempo (servicos/reconstrucao.ts)
+const disputasSql = db.prepare('SELECT DISTINCT turno, uf, cargo FROM snapshot ORDER BY turno, cargo, uf');
+const snapsDaDisputaSql = db.prepare('SELECT id, instante, pst FROM snapshot WHERE turno = ? AND uf = ? AND cargo = ? AND pst > 0 ORDER BY instante');
+const topSql = db.prepare('SELECT numero, nome, votos, percentual FROM voto WHERE snapshot_id = ? ORDER BY votos DESC LIMIT ?');
+
+export const disputasComSnapshots = () => disputasSql.all() as { turno: number; uf: string; cargo: number }[];
+export const snapshotsDaDisputa = (turno: number, uf: string, cargo: number) =>
+  snapsDaDisputaSql.all(turno, uf, cargo) as { id: number; instante: number; pst: number }[];
+export const maisVotadosDoSnapshot = (id: number, n: number) =>
+  topSql.all(id, n) as { numero: string; nome: string; votos: number; percentual: number }[];

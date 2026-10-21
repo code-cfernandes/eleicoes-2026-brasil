@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Candidato, DisputaDoTurno } from '../../../shared/tipos.ts';
-import { NOMES_UF } from '../../../shared/ufs.ts';
+import { NOMES_UF, UFS } from '../../../shared/ufs.ts';
 import { buscarDisputas } from '../api.ts';
 import { Bandeira } from './Bandeira.tsx';
 import { Foto } from './Cartao.tsx';
@@ -11,7 +11,6 @@ import { ladosPorPartido, ordenarConfronto, type Lados } from './PlacarSegundoTu
 // O estado escolhido em "Seu estado" (Início) aparece em destaque.
 
 const CHAVE_ESTADO_PREFERIDO = 'eleicoes2026:estado'; // a mesma do Início
-const UFS = Object.keys(NOMES_UF).filter((u) => u !== 'br' && u !== 'zz');
 const nome = (uf: string) => NOMES_UF[uf] ?? uf.toUpperCase();
 const porNome = (a: string, b: string) => nome(a).localeCompare(nome(b), 'pt-BR');
 
@@ -40,7 +39,8 @@ function Confronto({ candidatos, lados, grande = false }: { candidatos: Candidat
   return (
     <div className={`disputas-confronto${grande ? ' disputas-confronto-grande' : ''}`}>
       {lado(a)}
-      <span className="disputas-x" aria-label="contra">×</span>
+      {/* "VS" em selo, e não "×": o × pequeno era confundido com um ponto */}
+      <span className="disputas-x"><span aria-hidden="true">VS</span><span className="visualmente-oculto">contra</span></span>
       {lado(b)}
     </div>
   );

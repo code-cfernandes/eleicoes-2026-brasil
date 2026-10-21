@@ -1,4 +1,4 @@
-import { env, envNumero } from './config.ts';
+import { env, envNumero } from '../config/ambiente.ts';
 
 // Cliente do DeepSeek: redige frases curtas e neutras para a linha do tempo de Presidente/Brasil.
 // A IA só reescreve os fatos já detectados pelo código (que continuam sendo a fonte da verdade);

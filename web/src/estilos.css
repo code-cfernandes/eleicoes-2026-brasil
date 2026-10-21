@@ -702,11 +702,15 @@ tbody th { font-weight: 500; }
 .disputas-candidato-texto { display: grid; min-width: 0; line-height: 1.2; }
 .disputas-candidato-texto strong { font: 600 1rem/1.2 'Barlow Condensed', sans-serif; overflow-wrap: break-word; }
 .disputas-candidato-texto span { color: var(--suave); font-size: .75rem; }
-.disputas-x { color: var(--segundo-turno); font: 700 1.25rem 'Barlow Condensed', sans-serif; flex-shrink: 0; }
+.disputas-x {
+  flex-shrink: 0; display: grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 50%;
+  border: 2px solid var(--segundo-turno); background: var(--superficie);
+  color: var(--tinta); font: 700 .95rem/1 'Barlow Condensed', sans-serif; letter-spacing: .04em;
+}
 .disputas-confronto-grande .foto, .disputas-confronto-grande .foto-vazia { width: 3.5rem; height: 3.5rem; }
 /* Nome grande só onde cabe: no celular, "FLAVIO BOLSONARO" quebraria no meio da palavra */
 .disputas-confronto-grande .disputas-candidato-texto strong { font-size: 1.1rem; }
-.disputas-confronto-grande .disputas-x { font-size: 1.75rem; }
+.disputas-confronto-grande .disputas-x { width: 3rem; height: 3rem; font-size: 1.2rem; }
 .disputas-estados {
   list-style: none; padding: 0; display: grid; gap: .6rem;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
